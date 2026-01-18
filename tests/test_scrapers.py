@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 
 from keiba.scrapers.base import BaseScraper
 from keiba.scrapers.race_list import RaceListScraper
+from keiba.scrapers.race_detail import RaceDetailScraper
 
 
 class TestBaseScraperInit:
@@ -383,3 +384,212 @@ class TestRaceListScraperFetchRaceUrls:
             "https://race.netkeiba.com/race/202401010202.html",
         ]
         assert result == expected_urls
+
+
+# =============================================================================
+# RaceDetailScraper Tests
+# =============================================================================
+
+
+@pytest.fixture
+def race_detail_html():
+    """テスト用HTMLフィクスチャを読み込む"""
+    fixture_path = Path(__file__).parent / "fixtures" / "race_detail.html"
+    return fixture_path.read_text(encoding="utf-8")
+
+
+@pytest.fixture
+def race_detail_scraper():
+    """RaceDetailScraperインスタンスを返す"""
+    return RaceDetailScraper(delay=0)
+
+
+class TestRaceDetailScraperInit:
+    """RaceDetailScraper初期化のテスト"""
+
+    def test_inherits_from_base_scraper(self):
+        """RaceDetailScraperはBaseScraperを継承している"""
+        scraper = RaceDetailScraper()
+        assert isinstance(scraper, BaseScraper)
+
+    def test_default_delay(self):
+        """デフォルトのdelay値を継承する"""
+        scraper = RaceDetailScraper()
+        assert scraper.delay == 1.0
+
+    def test_custom_delay(self):
+        """カスタムdelay値を設定できる"""
+        scraper = RaceDetailScraper(delay=2.0)
+        assert scraper.delay == 2.0
+
+    def test_base_url_attribute(self):
+        """BASE_URL属性が正しく設定されている"""
+        assert RaceDetailScraper.BASE_URL == "https://db.netkeiba.com"
+
+
+class TestRaceDetailScraperParse:
+    """RaceDetailScraper.parse()のテスト"""
+
+    def test_parse_returns_dict(self, race_detail_scraper, race_detail_html):
+        """parse()は辞書を返す"""
+        soup = race_detail_scraper.get_soup(race_detail_html)
+        result = race_detail_scraper.parse(soup, race_id="202401010101")
+        assert isinstance(result, dict)
+
+    def test_parse_returns_race_and_results_keys(
+        self, race_detail_scraper, race_detail_html
+    ):
+        """parse()はraceとresultsキーを含む辞書を返す"""
+        soup = race_detail_scraper.get_soup(race_detail_html)
+        result = race_detail_scraper.parse(soup, race_id="202401010101")
+        assert "race" in result
+        assert "results" in result
+
+    def test_parse_race_info(self, race_detail_scraper, race_detail_html):
+        """parse()はレース情報を正しく抽出する"""
+        soup = race_detail_scraper.get_soup(race_detail_html)
+        result = race_detail_scraper.parse(soup, race_id="202401010101")
+        race = result["race"]
+
+        assert race["id"] == "202401010101"
+        assert race["name"] == "有馬記念(G1)"
+        assert race["date"] == "2024年12月22日"
+        assert race["course"] == "中山"
+        assert race["race_number"] == 11
+        assert race["distance"] == 1600
+        assert race["surface"] == "芝"
+        assert race["weather"] == "晴"
+        assert race["track_condition"] == "良"
+
+    def test_parse_results_list(self, race_detail_scraper, race_detail_html):
+        """parse()は結果リストを正しく抽出する"""
+        soup = race_detail_scraper.get_soup(race_detail_html)
+        result = race_detail_scraper.parse(soup, race_id="202401010101")
+        results = result["results"]
+
+        assert isinstance(results, list)
+        assert len(results) == 5  # 5頭分のデータ
+
+    def test_parse_first_place_horse(self, race_detail_scraper, race_detail_html):
+        """parse()は1着馬の情報を正しく抽出する"""
+        soup = race_detail_scraper.get_soup(race_detail_html)
+        result = race_detail_scraper.parse(soup, race_id="202401010101")
+        first_horse = result["results"][0]
+
+        assert first_horse["finish_position"] == 1
+        assert first_horse["bracket_number"] == 3
+        assert first_horse["horse_number"] == 5
+        assert first_horse["horse_id"] == "2019104251"
+        assert first_horse["horse_name"] == "ドウデュース"
+        assert first_horse["jockey_id"] == "01167"
+        assert first_horse["jockey_name"] == "武豊"
+        assert first_horse["trainer_id"] == "01088"
+        assert first_horse["trainer_name"] == "友道康夫"
+        assert first_horse["odds"] == 3.5
+        assert first_horse["popularity"] == 2
+        assert first_horse["weight"] == 512
+        assert first_horse["weight_diff"] == 4
+        assert first_horse["time"] == "2:31.2"
+        assert first_horse["margin"] == ""
+
+    def test_parse_second_place_horse(self, race_detail_scraper, race_detail_html):
+        """parse()は2着馬の情報を正しく抽出する"""
+        soup = race_detail_scraper.get_soup(race_detail_html)
+        result = race_detail_scraper.parse(soup, race_id="202401010101")
+        second_horse = result["results"][1]
+
+        assert second_horse["finish_position"] == 2
+        assert second_horse["bracket_number"] == 1
+        assert second_horse["horse_number"] == 2
+        assert second_horse["horse_id"] == "2020104567"
+        assert second_horse["horse_name"] == "シャフリヤール"
+        assert second_horse["jockey_id"] == "01178"
+        assert second_horse["jockey_name"] == "クリスチャン・デムーロ"
+        assert second_horse["trainer_id"] == "01095"
+        assert second_horse["trainer_name"] == "藤原英昭"
+        assert second_horse["odds"] == 8.2
+        assert second_horse["popularity"] == 4
+        assert second_horse["weight"] == 486
+        assert second_horse["weight_diff"] == -2
+        assert second_horse["time"] == "2:31.4"
+        assert second_horse["margin"] == "1 1/4"
+
+    def test_parse_third_place_horse_zero_weight_diff(
+        self, race_detail_scraper, race_detail_html
+    ):
+        """parse()は体重差0の場合も正しく抽出する"""
+        soup = race_detail_scraper.get_soup(race_detail_html)
+        result = race_detail_scraper.parse(soup, race_id="202401010101")
+        third_horse = result["results"][2]
+
+        assert third_horse["finish_position"] == 3
+        assert third_horse["horse_name"] == "タイトルホルダー"
+        assert third_horse["weight"] == 492
+        assert third_horse["weight_diff"] == 0
+
+    def test_parse_disqualified_horse(self, race_detail_scraper, race_detail_html):
+        """parse()は競走中止馬の情報を正しく抽出する"""
+        soup = race_detail_scraper.get_soup(race_detail_html)
+        result = race_detail_scraper.parse(soup, race_id="202401010101")
+        # 中止馬は5番目（インデックス4）
+        dq_horse = result["results"][4]
+
+        assert dq_horse["finish_position"] is None  # 中止は順位なし
+        assert dq_horse["horse_name"] == "テスト馬"
+        assert dq_horse["time"] == ""  # タイムなし
+
+
+class TestRaceDetailScraperBuildUrl:
+    """RaceDetailScraper._build_url()のテスト"""
+
+    def test_build_url_formats_race_id_correctly(self, race_detail_scraper):
+        """_build_url()はレースIDを正しくフォーマットする"""
+        url = race_detail_scraper._build_url(race_id="202401010101")
+        assert url == "https://db.netkeiba.com/race/202401010101/"
+
+
+class TestRaceDetailScraperFetchRaceDetail:
+    """RaceDetailScraper.fetch_race_detail()のテスト"""
+
+    @patch.object(RaceDetailScraper, "fetch")
+    def test_fetch_race_detail_calls_fetch_with_correct_url(
+        self, mock_fetch, race_detail_scraper, race_detail_html
+    ):
+        """fetch_race_detail()は正しいURLでfetch()を呼び出す"""
+        mock_fetch.return_value = race_detail_html
+
+        race_detail_scraper.fetch_race_detail(race_id="202401010101")
+
+        mock_fetch.assert_called_once_with(
+            "https://db.netkeiba.com/race/202401010101/"
+        )
+
+    @patch.object(RaceDetailScraper, "fetch")
+    def test_fetch_race_detail_returns_dict(
+        self, mock_fetch, race_detail_scraper, race_detail_html
+    ):
+        """fetch_race_detail()は辞書を返す"""
+        mock_fetch.return_value = race_detail_html
+
+        result = race_detail_scraper.fetch_race_detail(race_id="202401010101")
+
+        assert isinstance(result, dict)
+        assert "race" in result
+        assert "results" in result
+
+    @patch.object(RaceDetailScraper, "fetch")
+    def test_fetch_race_detail_integration(
+        self, mock_fetch, race_detail_scraper, race_detail_html
+    ):
+        """fetch_race_detail()の統合テスト"""
+        mock_fetch.return_value = race_detail_html
+
+        result = race_detail_scraper.fetch_race_detail(race_id="202401010101")
+
+        # レース情報の確認
+        assert result["race"]["name"] == "有馬記念(G1)"
+        assert result["race"]["course"] == "中山"
+
+        # 結果の確認
+        assert len(result["results"]) == 5
+        assert result["results"][0]["horse_name"] == "ドウデュース"
