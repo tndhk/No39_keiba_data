@@ -8,6 +8,12 @@ __pycache__/
 venv/
 ENV/
 env/
+*.egg-info/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
 
 # IDE
 .idea/
@@ -22,3 +28,13 @@ data/*.db
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code
+.claude/
+
+# AIPM
+Flow/
+Stock/
+
+# Package manager
+uv.lock
