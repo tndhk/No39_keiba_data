@@ -57,62 +57,91 @@ class RaceDetailScraper(BaseScraper):
         """
         race_info = {"id": race_id}
 
-        # Race name
-        race_name_elem = soup.find("div", class_="RaceName")
-        if race_name_elem:
-            h1 = race_name_elem.find("h1")
+        # Find the data_intro div which contains all race info
+        data_intro = soup.find("div", class_="data_intro")
+
+        # Race name - db.netkeiba.com: <dd><h1>レース名</h1></dd>
+        dd_elem = soup.find("dd")
+        if dd_elem:
+            h1 = dd_elem.find("h1")
             if h1:
                 race_info["name"] = h1.get_text(strip=True)
 
-        # Race date
-        race_date_elem = soup.find("div", class_="RaceDate")
-        if race_date_elem:
-            span = race_date_elem.find("span")
-            if span:
-                race_info["date"] = span.get_text(strip=True)
+        # Date and course from p.smalltxt
+        # Format: "2024年01月01日 11回川崎1日目"
+        smalltxt = soup.find("p", class_="smalltxt")
+        if smalltxt:
+            text = smalltxt.get_text(strip=True)
+            # Extract date
+            date_match = re.search(r"(\d{4}年\d{2}月\d{2}日)", text)
+            if date_match:
+                race_info["date"] = date_match.group(1)
+            # Extract course name (e.g., "川崎" from "11回川崎1日目")
+            course_match = re.search(r"\d+回(.+?)\d+日目", text)
+            if course_match:
+                race_info["course"] = course_match.group(1)
 
-        # Race number
-        race_num_elem = soup.find("div", class_="RaceNum")
-        if race_num_elem:
-            span = race_num_elem.find("span")
-            if span:
-                num_text = span.get_text(strip=True)
-                # Extract number from "11R" format
-                match = re.match(r"(\d+)R?", num_text)
-                if match:
-                    race_info["race_number"] = int(match.group(1))
+        # Race number from dt - Format: "1 R"
+        dt_elem = soup.find("dt")
+        if dt_elem:
+            dt_text = dt_elem.get_text(strip=True)
+            # Extract number from "1 R" or "11R" format
+            match = re.search(r"(\d+)\s*R", dt_text, re.IGNORECASE)
+            if match:
+                race_info["race_number"] = int(match.group(1))
 
-        # Course info from RaceData02
-        race_data02 = soup.find("div", class_="RaceData02")
-        if race_data02:
-            spans = race_data02.find_all("span")
-            if len(spans) >= 2:
-                race_info["course"] = spans[1].get_text(strip=True)
+        # Distance, surface, weather, track_condition from span inside dd > p
+        # Format: "ダ左1500m / 天候 : 晴 / ダート : 良 / 発走 : 11:20"
+        # The span is inside dd > p element
+        if dd_elem:
+            p_elem = dd_elem.find("p")
+            if p_elem:
+                span = p_elem.find("span")
+                if span:
+                    text = span.get_text()
+                    # Normalize whitespace
+                    text = " ".join(text.split())
+                    self._parse_race_conditions(text, race_info)
 
-        # Distance, surface, weather, track_condition from RaceData01
-        race_data01 = soup.find("div", class_="RaceData01")
-        if race_data01:
-            spans = race_data01.find_all("span")
-            for span in spans:
-                text = span.get_text(strip=True)
-
-                # Parse distance and surface (e.g., "芝右1600m")
-                dist_match = re.search(r"(芝|ダート|障).*?(\d+)m", text)
-                if dist_match:
-                    race_info["surface"] = dist_match.group(1)
-                    race_info["distance"] = int(dist_match.group(2))
-
-                # Parse weather (e.g., "天候:晴")
-                weather_match = re.match(r"天候[:：](.+)", text)
-                if weather_match:
-                    race_info["weather"] = weather_match.group(1)
-
-                # Parse track condition (e.g., "馬場:良")
-                track_match = re.match(r"馬場[:：](.+)", text)
-                if track_match:
-                    race_info["track_condition"] = track_match.group(1)
+        # Fallback: search all spans if not found in dd > p
+        if "distance" not in race_info:
+            for span in soup.find_all("span"):
+                text = span.get_text()
+                text = " ".join(text.split())
+                if "m" in text and ("天候" in text or "/" in text):
+                    self._parse_race_conditions(text, race_info)
+                    break
 
         return race_info
+
+    def _parse_race_conditions(self, text: str, race_info: dict) -> None:
+        """Parse race conditions from text.
+
+        Args:
+            text: Text containing race conditions (e.g., "ダ左1500m / 天候 : 晴")
+            race_info: Dictionary to update with parsed values.
+        """
+        parts = [p.strip() for p in text.split("/")]
+        for part in parts:
+            # Parse distance and surface (e.g., "ダ左1500m")
+            # "ダ" = ダート, "芝" = 芝, "障" = 障害
+            dist_match = re.search(r"(ダ|芝|障)[左右直]?\s*外?\s*(\d+)m", part)
+            if dist_match:
+                surface = dist_match.group(1)
+                if surface == "ダ":
+                    surface = "ダート"
+                race_info["surface"] = surface
+                race_info["distance"] = int(dist_match.group(2))
+
+            # Parse weather (e.g., "天候 : 晴")
+            weather_match = re.search(r"天候\s*[:：]\s*(.+)", part)
+            if weather_match:
+                race_info["weather"] = weather_match.group(1).strip()
+
+            # Parse track condition (e.g., "ダート : 良" or "芝 : 良")
+            track_match = re.search(r"(?:ダート|芝)\s*[:：]\s*(.+)", part)
+            if track_match:
+                race_info["track_condition"] = track_match.group(1).strip()
 
     def _parse_results(self, soup: BeautifulSoup) -> list[dict]:
         """Parse race results from the page.
@@ -125,13 +154,18 @@ class RaceDetailScraper(BaseScraper):
         """
         results = []
 
-        # Find result table
-        table = soup.find("table", class_="RaceTable01")
+        # Find result table - db.netkeiba.com uses "race_table_01"
+        table = soup.find("table", class_="race_table_01")
         if not table:
             return results
 
-        # Find all horse rows
-        rows = table.find_all("tr", class_="HorseList")
+        # Find all horse rows in tbody (skip header)
+        tbody = table.find("tbody")
+        if tbody:
+            rows = tbody.find_all("tr")
+        else:
+            # Fallback: get all tr except first (header)
+            rows = table.find_all("tr")[1:]
 
         for row in rows:
             horse_result = self._parse_horse_row(row)
@@ -143,6 +177,12 @@ class RaceDetailScraper(BaseScraper):
     def _parse_horse_row(self, row) -> dict | None:
         """Parse a single horse result row.
 
+        Column order for db.netkeiba.com (21 columns total):
+        0: 着順, 1: 枠番, 2: 馬番, 3: 馬名, 4: 性齢, 5: 斤量, 6: 騎手,
+        7: タイム, 8: 着差, 9: タイム指数, 10: 通過, 11: 上り,
+        12: 単勝(オッズ), 13: 人気, 14: 馬体重, 15-17: プレミアム,
+        18: 調教師, 19: 馬主, 20: 賞金
+
         Args:
             row: BeautifulSoup element for the table row.
 
@@ -150,99 +190,105 @@ class RaceDetailScraper(BaseScraper):
             Dictionary containing the horse's result data.
         """
         result = {}
+        cells = row.find_all("td")
+        if len(cells) < 10:
+            return None
 
-        # Finish position
-        rank_elem = row.find("td", class_="Result_Rank")
-        if rank_elem:
-            rank_text = rank_elem.get_text(strip=True)
-            if rank_text.isdigit():
-                result["finish_position"] = int(rank_text)
-            else:
-                # "中止", "除外" etc.
-                result["finish_position"] = None
+        # Column 0: Finish position
+        rank_text = cells[0].get_text(strip=True)
+        if rank_text.isdigit():
+            result["finish_position"] = int(rank_text)
+        else:
+            # "中止", "除外" etc.
+            result["finish_position"] = None
 
-        # Bracket number
-        bracket_elem = row.find("td", class_="Bracket")
-        if bracket_elem:
-            bracket_num = bracket_elem.find("span", class_="Bracket_Num")
-            if bracket_num:
-                result["bracket_number"] = int(bracket_num.get_text(strip=True))
+        # Column 1: Bracket number
+        bracket_span = cells[1].find("span")
+        if bracket_span:
+            bracket_text = bracket_span.get_text(strip=True)
+            if bracket_text.isdigit():
+                result["bracket_number"] = int(bracket_text)
+        else:
+            bracket_text = cells[1].get_text(strip=True)
+            if bracket_text.isdigit():
+                result["bracket_number"] = int(bracket_text)
 
-        # Horse number
-        horse_num_elem = row.find("td", class_="Horse_Num")
-        if horse_num_elem:
-            result["horse_number"] = int(horse_num_elem.get_text(strip=True))
+        # Column 2: Horse number
+        horse_num_text = cells[2].get_text(strip=True)
+        if horse_num_text.isdigit():
+            result["horse_number"] = int(horse_num_text)
 
-        # Horse ID and name
-        horse_name_elem = row.find("td", class_="Horse_Name")
-        if horse_name_elem:
-            link = horse_name_elem.find("a")
-            if link:
-                result["horse_name"] = link.get_text(strip=True)
-                # Extract horse ID from URL
-                href = link.get("href", "")
-                horse_id_match = re.search(r"/horse/(\d+)", href)
-                if horse_id_match:
-                    result["horse_id"] = horse_id_match.group(1)
+        # Column 3: Horse ID and name
+        horse_link = cells[3].find("a")
+        if horse_link:
+            result["horse_name"] = horse_link.get_text(strip=True)
+            href = horse_link.get("href", "")
+            # Pattern: /horse/2019104251/ or /horse/result/recent/2019104251/
+            horse_id_match = re.search(r"/horse/(?:result/recent/)?(\d+)", href)
+            if horse_id_match:
+                result["horse_id"] = horse_id_match.group(1)
 
-        # Jockey ID and name
-        jockey_elem = row.find("td", class_="Jockey")
-        if jockey_elem:
-            link = jockey_elem.find("a")
-            if link:
-                result["jockey_name"] = link.get_text(strip=True)
-                href = link.get("href", "")
-                jockey_id_match = re.search(r"/jockey/(\d+)", href)
+        # Column 6: Jockey ID and name
+        if len(cells) > 6:
+            jockey_link = cells[6].find("a")
+            if jockey_link:
+                result["jockey_name"] = jockey_link.get_text(strip=True)
+                href = jockey_link.get("href", "")
+                # Pattern: /jockey/01167/ or /jockey/result/recent/01167/
+                # ID can be alphanumeric (e.g., "05365", "a0257")
+                jockey_id_match = re.search(r"/jockey/(?:result/recent/)?([a-zA-Z0-9]+)", href)
                 if jockey_id_match:
                     result["jockey_id"] = jockey_id_match.group(1)
 
-        # Trainer ID and name
-        trainer_elem = row.find("td", class_="Trainer")
-        if trainer_elem:
-            link = trainer_elem.find("a")
-            if link:
-                result["trainer_name"] = link.get_text(strip=True)
-                href = link.get("href", "")
-                trainer_id_match = re.search(r"/trainer/(\d+)", href)
-                if trainer_id_match:
-                    result["trainer_id"] = trainer_id_match.group(1)
+        # Column 7: Time
+        if len(cells) > 7:
+            result["time"] = cells[7].get_text(strip=True)
 
-        # Time
-        time_elem = row.find("td", class_="Time")
-        if time_elem:
-            result["time"] = time_elem.get_text(strip=True)
+        # Column 8: Margin
+        if len(cells) > 8:
+            result["margin"] = cells[8].get_text(strip=True)
 
-        # Margin
-        margin_elem = row.find("td", class_="Margin")
-        if margin_elem:
-            result["margin"] = margin_elem.get_text(strip=True)
-
-        # Odds
-        odds_elem = row.find("td", class_="Odds")
-        if odds_elem:
-            odds_text = odds_elem.get_text(strip=True)
+        # Column 12: Odds (単勝)
+        if len(cells) > 12:
+            odds_text = cells[12].get_text(strip=True)
             if odds_text:
                 try:
                     result["odds"] = float(odds_text)
                 except ValueError:
                     result["odds"] = None
 
-        # Popularity
-        pop_elem = row.find("td", class_="Popularity")
-        if pop_elem:
-            pop_text = pop_elem.get_text(strip=True)
+        # Column 13: Popularity
+        if len(cells) > 13:
+            pop_text = cells[13].get_text(strip=True)
             if pop_text.isdigit():
                 result["popularity"] = int(pop_text)
 
-        # Weight and weight_diff
-        weight_elem = row.find("td", class_="Weight")
-        if weight_elem:
-            weight_text = weight_elem.get_text(strip=True)
+        # Column 14: Weight and weight_diff
+        if len(cells) > 14:
+            weight_text = cells[14].get_text(strip=True)
             # Parse "512(+4)", "486(-2)", "492(0)" formats
             weight_match = re.match(r"(\d+)\(([+-]?\d+)\)", weight_text)
             if weight_match:
                 result["weight"] = int(weight_match.group(1))
                 result["weight_diff"] = int(weight_match.group(2))
+
+        # Column 18: Trainer ID and name
+        if len(cells) > 18:
+            trainer_link = cells[18].find("a")
+            if trainer_link:
+                result["trainer_name"] = trainer_link.get_text(strip=True)
+                href = trainer_link.get("href", "")
+                # Pattern: /trainer/01088/ or /trainer/result/recent/01088/
+                # ID can be alphanumeric
+                trainer_id_match = re.search(r"/trainer/(?:result/recent/)?([a-zA-Z0-9]+)", href)
+                if trainer_id_match:
+                    result["trainer_id"] = trainer_id_match.group(1)
+
+        # Set default values for missing optional fields
+        # (e.g., for scratched or disqualified horses)
+        result.setdefault("popularity", None)
+        result.setdefault("weight", None)
+        result.setdefault("weight_diff", None)
 
         return result
 

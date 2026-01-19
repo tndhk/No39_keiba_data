@@ -1,0 +1,38 @@
+Codemap Diff Report
+===================
+Generated: 2026-01-19T09:15:00+09:00
+
+Status: INITIAL GENERATION
+--------------------------
+No previous codemaps existed. All files are newly created.
+
+Files Generated:
+- codemaps/architecture.md (NEW)
+- codemaps/backend.md (NEW)
+- codemaps/data.md (NEW)
+
+Change Summary:
+- architecture.md: 100% new (no previous version)
+- backend.md: 100% new (no previous version)
+- data.md: 100% new (no previous version)
+
+Note: frontend.md not generated (this is a CLI-only Python project with no frontend)
+
+Module Statistics:
+------------------
+Total Python files: 18 (excluding .venv)
+  - keiba/: 4 files
+  - keiba/models/: 9 files
+  - keiba/scrapers/: 5 files
+
+Models: 8 (Base, Horse, Race, RaceResult, Jockey, Trainer, Owner, Breeder)
+Scrapers: 4 (BaseScraper, RaceListScraper, RaceDetailScraper, HorseDetailScraper)
+CLI Commands: 2 (scrape, scrape-horses)
+
+Next Update Recommendation:
+---------------------------
+Run /update-codemaps after:
+- Adding new models
+- Adding new scrapers
+- Adding new CLI commands
+- Changing module dependencies

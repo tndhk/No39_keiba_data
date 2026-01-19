@@ -8,10 +8,11 @@ import re
 from datetime import date
 
 import click
+from sqlalchemy import or_
 
 from keiba.db import get_engine, get_session, init_db
 from keiba.models import Horse, Jockey, Race, RaceResult, Trainer
-from keiba.scrapers import RaceDetailScraper, RaceListScraper
+from keiba.scrapers import HorseDetailScraper, RaceDetailScraper, RaceListScraper
 
 
 def extract_race_id_from_url(url: str) -> str:
@@ -23,7 +24,7 @@ def extract_race_id_from_url(url: str) -> str:
     Returns:
         レースID（例: 202401010101）
     """
-    match = re.search(r"/race/(\d+)\.html", url)
+    match = re.search(r"/race/(\d+)/?", url)
     if match:
         return match.group(1)
     raise ValueError(f"Invalid race URL: {url}")
@@ -143,8 +144,8 @@ def _save_race_data(session, race_data: dict) -> None:
         race_number=race_info["race_number"],
         distance=race_info["distance"],
         surface=race_info["surface"],
-        weather=race_info["weather"],
-        track_condition=race_info["track_condition"],
+        weather=race_info.get("weather"),
+        track_condition=race_info.get("track_condition"),
     )
     session.add(race)
 
@@ -201,3 +202,114 @@ def _save_race_data(session, race_data: dict) -> None:
             margin=result["margin"],
         )
         session.add(race_result)
+
+
+@main.command()
+@click.option("--db", required=True, type=click.Path(), help="DBファイルパス")
+@click.option("--limit", default=100, type=int, help="取得する馬の数（デフォルト: 100）")
+def scrape_horses(db: str, limit: int):
+    """詳細未取得の馬情報を収集"""
+    click.echo(f"馬詳細データ収集開始")
+    click.echo(f"データベース: {db}")
+    click.echo(f"取得上限: {limit}件")
+
+    # DBを初期化
+    engine = get_engine(db)
+    init_db(engine)
+
+    # スクレイパーを初期化
+    horse_detail_scraper = HorseDetailScraper()
+
+    # 統計情報
+    total_processed = 0
+    updated_horses = 0
+    errors = 0
+
+    with get_session(engine) as session:
+        # 詳細未取得の馬を取得（sireがNullの馬）
+        horses = (
+            session.query(Horse)
+            .filter(
+                or_(
+                    Horse.sire.is_(None),
+                    Horse.sex == "不明",
+                )
+            )
+            .limit(limit)
+            .all()
+        )
+
+        if not horses:
+            click.echo("詳細未取得の馬はありません。")
+            return
+
+        click.echo(f"詳細未取得の馬: {len(horses)}件")
+        click.echo("")
+
+        for horse in horses:
+            total_processed += 1
+            click.echo(f"  [{total_processed}/{len(horses)}] {horse.name} ({horse.id})...")
+
+            try:
+                horse_data = horse_detail_scraper.fetch_horse_detail(horse.id)
+                _update_horse(session, horse, horse_data)
+                updated_horses += 1
+                click.echo(f"    更新完了")
+            except Exception as e:
+                errors += 1
+                click.echo(f"    エラー: {e}")
+                continue
+
+    click.echo("")
+    click.echo("=" * 50)
+    click.echo(f"完了")
+    click.echo(f"  処理数: {total_processed}")
+    click.echo(f"  更新成功: {updated_horses}")
+    click.echo(f"  エラー: {errors}")
+
+
+def _update_horse(session, horse: Horse, horse_data: dict) -> None:
+    """馬情報を更新する
+
+    Args:
+        session: SQLAlchemyセッション
+        horse: 更新対象のHorseオブジェクト
+        horse_data: スクレイピングで取得した馬データ
+    """
+    # 基本情報
+    if horse_data.get("name"):
+        horse.name = horse_data["name"]
+    if horse_data.get("sex"):
+        horse.sex = horse_data["sex"]
+    if horse_data.get("birth_year"):
+        horse.birth_year = horse_data["birth_year"]
+
+    # 血統情報
+    if horse_data.get("sire"):
+        horse.sire = horse_data["sire"]
+    if horse_data.get("dam"):
+        horse.dam = horse_data["dam"]
+    if horse_data.get("dam_sire"):
+        horse.dam_sire = horse_data["dam_sire"]
+
+    # 基本情報
+    if horse_data.get("coat_color"):
+        horse.coat_color = horse_data["coat_color"]
+    if horse_data.get("birthplace"):
+        horse.birthplace = horse_data["birthplace"]
+
+    # 関連ID
+    if horse_data.get("trainer_id"):
+        horse.trainer_id = horse_data["trainer_id"]
+    if horse_data.get("owner_id"):
+        horse.owner_id = horse_data["owner_id"]
+    if horse_data.get("breeder_id"):
+        horse.breeder_id = horse_data["breeder_id"]
+
+    # 成績情報
+    if horse_data.get("total_races") is not None:
+        horse.total_races = horse_data["total_races"]
+    if horse_data.get("total_wins") is not None:
+        horse.total_wins = horse_data["total_wins"]
+    if horse_data.get("total_earnings") is not None:
+        horse.total_earnings = horse_data["total_earnings"]

@@ -34,8 +34,8 @@ class Race(Base):
     race_number: Mapped[int] = mapped_column(nullable=False)
     distance: Mapped[int] = mapped_column(nullable=False)
     surface: Mapped[str] = mapped_column(String, nullable=False)
-    weather: Mapped[str] = mapped_column(String, nullable=False)
-    track_condition: Mapped[str] = mapped_column(String, nullable=False)
+    weather: Mapped[str | None] = mapped_column(String, nullable=True)
+    track_condition: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         default=datetime.utcnow, onupdate=datetime.utcnow

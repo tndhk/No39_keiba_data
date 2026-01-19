@@ -26,10 +26,10 @@ class RaceListScraper(BaseScraper):
         https://race.netkeiba.com/race/202401010101.html
     """
 
-    BASE_URL = "https://race.netkeiba.com"
+    BASE_URL = "https://db.netkeiba.com"
 
-    # Pattern to match race URLs: /race/YYYYMMDDXXXX.html
-    RACE_URL_PATTERN = re.compile(r"^/race/\d{12}\.html$")
+    # Pattern to match race URLs: /race/YYYYMMDDXXXX/
+    RACE_URL_PATTERN = re.compile(r"^/race/\d+/$")
 
     def parse(self, soup: BeautifulSoup) -> list[str]:
         """Parse the race list page and extract race URLs.
@@ -63,7 +63,7 @@ class RaceListScraper(BaseScraper):
             Full URL for the race list page.
         """
         date_str = f"{year:04d}{month:02d}{day:02d}"
-        return f"{self.BASE_URL}/top/race_list.html?kaisai_date={date_str}"
+        return f"{self.BASE_URL}/race/list/{date_str}/"
 
     def fetch_race_urls(self, year: int, month: int, day: int) -> list[str]:
         """Fetch race URLs for a specific date.

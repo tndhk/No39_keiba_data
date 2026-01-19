@@ -8,6 +8,7 @@ import pytest
 from bs4 import BeautifulSoup
 
 from keiba.scrapers.base import BaseScraper
+from keiba.scrapers.horse_detail import HorseDetailScraper
 from keiba.scrapers.race_list import RaceListScraper
 from keiba.scrapers.race_detail import RaceDetailScraper
 
@@ -243,7 +244,7 @@ class TestRaceListScraperInit:
 
     def test_base_url_attribute(self):
         """BASE_URL属性が正しく設定されている"""
-        assert RaceListScraper.BASE_URL == "https://race.netkeiba.com"
+        assert RaceListScraper.BASE_URL == "https://db.netkeiba.com"
 
 
 class TestRaceListScraperParse:
@@ -267,8 +268,8 @@ class TestRaceListScraperParse:
         soup = race_list_scraper.get_soup(race_list_html)
         result = race_list_scraper.parse(soup)
         for url in result:
-            assert url.startswith("https://race.netkeiba.com/race/")
-            assert url.endswith(".html")
+            assert url.startswith("https://db.netkeiba.com/race/")
+            assert url.endswith("/")
 
     def test_parse_extracts_correct_race_ids(self, race_list_scraper, race_list_html):
         """parse()は正しいレースIDを含むURLを抽出する"""
@@ -282,7 +283,7 @@ class TestRaceListScraperParse:
             "202401010202",
         ]
         for race_id in expected_race_ids:
-            expected_url = f"https://race.netkeiba.com/race/{race_id}.html"
+            expected_url = f"https://db.netkeiba.com/race/{race_id}/"
             assert expected_url in result
 
     def test_parse_excludes_non_race_links(self, race_list_scraper, race_list_html):
@@ -320,22 +321,22 @@ class TestRaceListScraperBuildUrl:
     def test_build_url_formats_date_correctly(self, race_list_scraper):
         """_build_url()は日付を正しくフォーマットする"""
         url = race_list_scraper._build_url(year=2024, month=1, day=1)
-        assert url == "https://race.netkeiba.com/top/race_list.html?kaisai_date=20240101"
+        assert url == "https://db.netkeiba.com/race/list/20240101/"
 
     def test_build_url_pads_month_and_day(self, race_list_scraper):
         """_build_url()は月と日をゼロパディングする"""
         url = race_list_scraper._build_url(year=2024, month=12, day=25)
-        assert url == "https://race.netkeiba.com/top/race_list.html?kaisai_date=20241225"
+        assert url == "https://db.netkeiba.com/race/list/20241225/"
 
     def test_build_url_with_single_digit_month(self, race_list_scraper):
         """1桁の月でもゼロパディングする"""
         url = race_list_scraper._build_url(year=2024, month=5, day=15)
-        assert "kaisai_date=20240515" in url
+        assert "/race/list/20240515/" in url
 
     def test_build_url_with_single_digit_day(self, race_list_scraper):
         """1桁の日でもゼロパディングする"""
         url = race_list_scraper._build_url(year=2024, month=10, day=3)
-        assert "kaisai_date=20241003" in url
+        assert "/race/list/20241003/" in url
 
 
 class TestRaceListScraperFetchRaceUrls:
@@ -351,7 +352,7 @@ class TestRaceListScraperFetchRaceUrls:
         race_list_scraper.fetch_race_urls(year=2024, month=1, day=1)
 
         mock_fetch.assert_called_once_with(
-            "https://race.netkeiba.com/top/race_list.html?kaisai_date=20240101"
+            "https://db.netkeiba.com/race/list/20240101/"
         )
 
     @patch.object(RaceListScraper, "fetch")
@@ -377,11 +378,11 @@ class TestRaceListScraperFetchRaceUrls:
         result = race_list_scraper.fetch_race_urls(year=2024, month=1, day=1)
 
         expected_urls = [
-            "https://race.netkeiba.com/race/202401010101.html",
-            "https://race.netkeiba.com/race/202401010102.html",
-            "https://race.netkeiba.com/race/202401010103.html",
-            "https://race.netkeiba.com/race/202401010201.html",
-            "https://race.netkeiba.com/race/202401010202.html",
+            "https://db.netkeiba.com/race/202401010101/",
+            "https://db.netkeiba.com/race/202401010102/",
+            "https://db.netkeiba.com/race/202401010103/",
+            "https://db.netkeiba.com/race/202401010201/",
+            "https://db.netkeiba.com/race/202401010202/",
         ]
         assert result == expected_urls
 
@@ -593,3 +594,200 @@ class TestRaceDetailScraperFetchRaceDetail:
         # 結果の確認
         assert len(result["results"]) == 5
         assert result["results"][0]["horse_name"] == "ドウデュース"
+
+
+# =============================================================================
+# HorseDetailScraper Tests
+# =============================================================================
+
+
+@pytest.fixture
+def horse_detail_html():
+    """テスト用HTMLフィクスチャを読み込む"""
+    fixture_path = Path(__file__).parent / "fixtures" / "horse_detail.html"
+    return fixture_path.read_text(encoding="utf-8")
+
+
+@pytest.fixture
+def horse_detail_scraper():
+    """HorseDetailScraperインスタンスを返す"""
+    return HorseDetailScraper(delay=0)
+
+
+class TestHorseDetailScraperInit:
+    """HorseDetailScraper初期化のテスト"""
+
+    def test_inherits_from_base_scraper(self):
+        """HorseDetailScraperはBaseScraperを継承している"""
+        scraper = HorseDetailScraper()
+        assert isinstance(scraper, BaseScraper)
+
+    def test_default_delay(self):
+        """デフォルトのdelay値を継承する"""
+        scraper = HorseDetailScraper()
+        assert scraper.delay == 1.0
+
+    def test_custom_delay(self):
+        """カスタムdelay値を設定できる"""
+        scraper = HorseDetailScraper(delay=2.0)
+        assert scraper.delay == 2.0
+
+    def test_base_url_attribute(self):
+        """BASE_URL属性が正しく設定されている"""
+        assert HorseDetailScraper.BASE_URL == "https://db.netkeiba.com"
+
+
+class TestHorseDetailScraperParse:
+    """HorseDetailScraper.parse()のテスト"""
+
+    def test_parse_returns_dict(self, horse_detail_scraper, horse_detail_html):
+        """parse()は辞書を返す"""
+        soup = horse_detail_scraper.get_soup(horse_detail_html)
+        result = horse_detail_scraper.parse(soup, horse_id="2019104251")
+        assert isinstance(result, dict)
+
+    def test_parse_extracts_horse_id(self, horse_detail_scraper, horse_detail_html):
+        """parse()は馬IDを正しく設定する"""
+        soup = horse_detail_scraper.get_soup(horse_detail_html)
+        result = horse_detail_scraper.parse(soup, horse_id="2019104251")
+        assert result["id"] == "2019104251"
+
+    def test_parse_extracts_name(self, horse_detail_scraper, horse_detail_html):
+        """parse()は馬名を正しく抽出する"""
+        soup = horse_detail_scraper.get_soup(horse_detail_html)
+        result = horse_detail_scraper.parse(soup, horse_id="2019104251")
+        assert result["name"] == "ドウデュース"
+
+    def test_parse_extracts_sex(self, horse_detail_scraper, horse_detail_html):
+        """parse()は性別を正しく抽出する"""
+        soup = horse_detail_scraper.get_soup(horse_detail_html)
+        result = horse_detail_scraper.parse(soup, horse_id="2019104251")
+        assert result["sex"] == "牡"
+
+    def test_parse_extracts_birth_year(self, horse_detail_scraper, horse_detail_html):
+        """parse()は生年を正しく抽出する"""
+        soup = horse_detail_scraper.get_soup(horse_detail_html)
+        result = horse_detail_scraper.parse(soup, horse_id="2019104251")
+        assert result["birth_year"] == 2019
+
+    def test_parse_extracts_trainer_id(self, horse_detail_scraper, horse_detail_html):
+        """parse()は調教師IDを正しく抽出する"""
+        soup = horse_detail_scraper.get_soup(horse_detail_html)
+        result = horse_detail_scraper.parse(soup, horse_id="2019104251")
+        assert result["trainer_id"] == "01088"
+
+    def test_parse_extracts_owner_id(self, horse_detail_scraper, horse_detail_html):
+        """parse()は馬主IDを正しく抽出する"""
+        soup = horse_detail_scraper.get_soup(horse_detail_html)
+        result = horse_detail_scraper.parse(soup, horse_id="2019104251")
+        assert result["owner_id"] == "001234"
+
+    def test_parse_extracts_breeder_id(self, horse_detail_scraper, horse_detail_html):
+        """parse()は生産者IDを正しく抽出する"""
+        soup = horse_detail_scraper.get_soup(horse_detail_html)
+        result = horse_detail_scraper.parse(soup, horse_id="2019104251")
+        assert result["breeder_id"] == "005678"
+
+    def test_parse_extracts_birthplace(self, horse_detail_scraper, horse_detail_html):
+        """parse()は産地を正しく抽出する"""
+        soup = horse_detail_scraper.get_soup(horse_detail_html)
+        result = horse_detail_scraper.parse(soup, horse_id="2019104251")
+        assert result["birthplace"] == "安平町"
+
+    def test_parse_extracts_coat_color(self, horse_detail_scraper, horse_detail_html):
+        """parse()は毛色を正しく抽出する"""
+        soup = horse_detail_scraper.get_soup(horse_detail_html)
+        result = horse_detail_scraper.parse(soup, horse_id="2019104251")
+        assert result["coat_color"] == "鹿毛"
+
+    def test_parse_extracts_sire(self, horse_detail_scraper, horse_detail_html):
+        """parse()は父を正しく抽出する"""
+        soup = horse_detail_scraper.get_soup(horse_detail_html)
+        result = horse_detail_scraper.parse(soup, horse_id="2019104251")
+        assert result["sire"] == "ハーツクライ"
+
+    def test_parse_extracts_dam(self, horse_detail_scraper, horse_detail_html):
+        """parse()は母を正しく抽出する"""
+        soup = horse_detail_scraper.get_soup(horse_detail_html)
+        result = horse_detail_scraper.parse(soup, horse_id="2019104251")
+        assert result["dam"] == "ダストアンドダイヤモンズ"
+
+    def test_parse_extracts_total_races(self, horse_detail_scraper, horse_detail_html):
+        """parse()は通算出走数を正しく抽出する"""
+        soup = horse_detail_scraper.get_soup(horse_detail_html)
+        result = horse_detail_scraper.parse(soup, horse_id="2019104251")
+        assert result["total_races"] == 5
+
+    def test_parse_extracts_total_wins(self, horse_detail_scraper, horse_detail_html):
+        """parse()は通算勝利数を正しく抽出する"""
+        soup = horse_detail_scraper.get_soup(horse_detail_html)
+        result = horse_detail_scraper.parse(soup, horse_id="2019104251")
+        assert result["total_wins"] == 3
+
+    def test_parse_extracts_total_earnings(self, horse_detail_scraper, horse_detail_html):
+        """parse()は獲得賞金を正しく抽出する"""
+        soup = horse_detail_scraper.get_soup(horse_detail_html)
+        result = horse_detail_scraper.parse(soup, horse_id="2019104251")
+        assert result["total_earnings"] == 15234
+
+
+class TestHorseDetailScraperBuildUrl:
+    """HorseDetailScraper._build_url()のテスト"""
+
+    def test_build_url_formats_horse_id_correctly(self, horse_detail_scraper):
+        """_build_url()は馬IDを正しくフォーマットする"""
+        url = horse_detail_scraper._build_url(horse_id="2019104251")
+        assert url == "https://db.netkeiba.com/horse/2019104251/"
+
+
+class TestHorseDetailScraperFetchHorseDetail:
+    """HorseDetailScraper.fetch_horse_detail()のテスト"""
+
+    @patch.object(HorseDetailScraper, "fetch")
+    def test_fetch_horse_detail_calls_fetch_with_correct_url(
+        self, mock_fetch, horse_detail_scraper, horse_detail_html
+    ):
+        """fetch_horse_detail()は正しいURLでfetch()を呼び出す"""
+        mock_fetch.return_value = horse_detail_html
+
+        horse_detail_scraper.fetch_horse_detail(horse_id="2019104251")
+
+        mock_fetch.assert_called_once_with(
+            "https://db.netkeiba.com/horse/2019104251/"
+        )
+
+    @patch.object(HorseDetailScraper, "fetch")
+    def test_fetch_horse_detail_returns_dict(
+        self, mock_fetch, horse_detail_scraper, horse_detail_html
+    ):
+        """fetch_horse_detail()は辞書を返す"""
+        mock_fetch.return_value = horse_detail_html
+
+        result = horse_detail_scraper.fetch_horse_detail(horse_id="2019104251")
+
+        assert isinstance(result, dict)
+        assert "id" in result
+        assert "name" in result
+
+    @patch.object(HorseDetailScraper, "fetch")
+    def test_fetch_horse_detail_integration(
+        self, mock_fetch, horse_detail_scraper, horse_detail_html
+    ):
+        """fetch_horse_detail()の統合テスト"""
+        mock_fetch.return_value = horse_detail_html
+
+        result = horse_detail_scraper.fetch_horse_detail(horse_id="2019104251")
+
+        # 基本情報の確認
+        assert result["name"] == "ドウデュース"
+        assert result["sex"] == "牡"
+        assert result["birth_year"] == 2019
+
+        # 血統情報の確認
+        assert result["sire"] == "ハーツクライ"
+        assert result["dam"] == "ダストアンドダイヤモンズ"
+
+        # 成績情報の確認
+        assert result["total_races"] == 5
+        assert result["total_wins"] == 3
+        assert result["total_earnings"] == 15234
