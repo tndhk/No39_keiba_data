@@ -41,3 +41,35 @@ class TestSireLineMapping:
         from keiba.config.pedigree_master import get_sire_line
 
         assert get_sire_line("ブライアンズタイム") == "roberto"
+
+
+class TestLineAptitude:
+    """系統別適性データのテスト"""
+
+    def test_sunday_silence_middle_distance_aptitude(self):
+        """サンデーサイレンス系の中距離適性は1.0"""
+        from keiba.config.pedigree_master import get_line_aptitude
+
+        aptitude = get_line_aptitude("sunday_silence")
+        assert aptitude["distance"]["middle"] == 1.0
+
+    def test_storm_cat_sprint_aptitude(self):
+        """ストームキャット系の短距離適性は1.0"""
+        from keiba.config.pedigree_master import get_line_aptitude
+
+        aptitude = get_line_aptitude("storm_cat")
+        assert aptitude["distance"]["sprint"] == 1.0
+
+    def test_roberto_heavy_track_aptitude(self):
+        """ロベルト系の重馬場適性は1.0"""
+        from keiba.config.pedigree_master import get_line_aptitude
+
+        aptitude = get_line_aptitude("roberto")
+        assert aptitude["track"]["heavy"] == 1.0
+
+    def test_unknown_line_returns_other_aptitude(self):
+        """未知の系統はother適性を返す"""
+        from keiba.config.pedigree_master import get_line_aptitude
+
+        aptitude = get_line_aptitude("unknown_line")
+        assert aptitude == get_line_aptitude("other")
