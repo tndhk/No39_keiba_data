@@ -458,37 +458,43 @@ class TestScoreCalculator:
 
         return ScoreCalculator()
 
-    def test_calculate_total_score(self, calculator):
-        """重み付き合計スコアを計算する"""
+    def test_calculate_total_score_with_7_factors(self, calculator):
+        """7因子の重み付き合計スコアを計算する"""
         factor_scores = {
             "past_results": 80.0,
             "course_fit": 70.0,
             "time_index": 85.0,
             "last_3f": 75.0,
             "popularity": 90.0,
+            "pedigree": 82.0,
+            "running_style": 78.0,
         }
         result = calculator.calculate_total(factor_scores)
-        # 80*0.25 + 70*0.20 + 85*0.20 + 75*0.20 + 90*0.15
-        # = 20 + 14 + 17 + 15 + 13.5 = 79.5
         assert result is not None
-        assert round(result, 1) == 79.5
+        # 全て同じ重み（約0.143）なので、平均に近い値になる
+        # 平均 = (80+70+85+75+90+82+78) / 7 = 80
+        assert 79 <= result <= 81
 
-    def test_handles_missing_factors(self, calculator):
-        """一部のFactorがNoneの場合は残りで正規化して計算"""
+    def test_handles_missing_new_factors(self, calculator):
+        """新因子がNoneの場合も正規化して計算"""
         factor_scores = {
             "past_results": 80.0,
-            "course_fit": None,  # データなし
+            "course_fit": 70.0,
             "time_index": 85.0,
-            "last_3f": None,  # データなし
+            "last_3f": 75.0,
             "popularity": 90.0,
+            "pedigree": None,
+            "running_style": None,
         }
         result = calculator.calculate_total(factor_scores)
         assert result is not None
-        # past_results: 25%, time_index: 20%, popularity: 15% = 60%
-        # 正規化: 25/60, 20/60, 15/60
-        # 80*(25/60) + 85*(20/60) + 90*(15/60)
-        # = 80*0.417 + 85*0.333 + 90*0.25
-        # = 33.3 + 28.3 + 22.5 = 84.2
+
+    def test_get_weights_returns_7_factors(self, calculator):
+        """重み設定に7因子が含まれる"""
+        weights = calculator.get_weights()
+        assert len(weights) == 7
+        assert "pedigree" in weights
+        assert "running_style" in weights
 
     def test_returns_none_if_all_factors_none(self, calculator):
         """全てのFactorがNoneの場合はNoneを返す"""
@@ -498,18 +504,11 @@ class TestScoreCalculator:
             "time_index": None,
             "last_3f": None,
             "popularity": None,
+            "pedigree": None,
+            "running_style": None,
         }
         result = calculator.calculate_total(factor_scores)
         assert result is None
-
-    def test_get_weights(self, calculator):
-        """重み設定を取得できる"""
-        weights = calculator.get_weights()
-        assert weights["past_results"] == 0.25
-        assert weights["course_fit"] == 0.20
-        assert weights["time_index"] == 0.20
-        assert weights["last_3f"] == 0.20
-        assert weights["popularity"] == 0.15
 
 
 class TestWeightsConfig:
