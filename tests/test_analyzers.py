@@ -532,6 +532,16 @@ class TestWeightsConfig:
             "time_index",
             "last_3f",
             "popularity",
+            "pedigree",
+            "running_style",
         ]
         for factor in required_factors:
             assert factor in FACTOR_WEIGHTS
+
+    def test_weights_are_equal(self):
+        """7因子が均等に配分されている"""
+        from keiba.config.weights import FACTOR_WEIGHTS
+
+        expected_weight = round(1.0 / 7, 3)
+        for weight in FACTOR_WEIGHTS.values():
+            assert abs(weight - expected_weight) < 0.01
