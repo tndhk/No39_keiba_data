@@ -1,4 +1,3 @@
-# keiba/analyzers/factors/running_style.py
 """RunningStyleFactor - 脚質分析Factor"""
 
 from collections import Counter

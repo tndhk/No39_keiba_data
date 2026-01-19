@@ -1,7 +1,8 @@
-# tests/test_running_style_factor.py
 """脚質分析（RunningStyleFactor）のテスト"""
 
 import pytest
+
+from keiba.analyzers.factors.running_style import RunningStyleFactor
 
 
 class TestRunningStyleClassification:
@@ -9,8 +10,6 @@ class TestRunningStyleClassification:
 
     @pytest.fixture
     def factor(self):
-        from keiba.analyzers.factors.running_style import RunningStyleFactor
-
         return RunningStyleFactor()
 
     def test_classify_escape_first_position(self, factor):
@@ -56,8 +55,6 @@ class TestHorseRunningStyleTendency:
 
     @pytest.fixture
     def factor(self):
-        from keiba.analyzers.factors.running_style import RunningStyleFactor
-
         return RunningStyleFactor()
 
     def test_determine_tendency_from_5_races(self, factor):
@@ -83,8 +80,6 @@ class TestRunningStyleFactor:
 
     @pytest.fixture
     def factor(self):
-        from keiba.analyzers.factors.running_style import RunningStyleFactor
-
         return RunningStyleFactor()
 
     def test_name_is_running_style(self, factor):
