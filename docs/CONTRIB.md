@@ -34,6 +34,10 @@ pip install -e ".[dev]"
 keiba/
 ├── models/       # SQLAlchemyモデル定義
 ├── scrapers/     # Webスクレイパー
+├── analyzers/    # レース分析モジュール
+│   └── factors/  # スコア算出ファクター
+├── config/       # 設定（分析ウェイト等）
+├── utils/        # ユーティリティ（グレード抽出等）
 ├── db.py         # データベース接続
 └── cli.py        # CLIエントリーポイント
 tests/
@@ -80,6 +84,32 @@ keiba scrape-horses --db data/keiba.db --limit 500
 |-----------|------|-----------|------|
 | --db | Yes | - | DBファイルパス |
 | --limit | No | 100 | 取得する馬の数 |
+
+### keiba analyze
+
+指定した日付・競馬場のレースを分析してスコアを表示。
+
+```bash
+# 指定日・競馬場の全レースを分析
+keiba analyze --db data/keiba.db --date 2024-01-06 --venue 中山
+
+# 特定のレースのみ分析
+keiba analyze --db data/keiba.db --date 2024-01-06 --venue 中山 --race 11
+```
+
+| オプション | 必須 | デフォルト | 説明 |
+|-----------|------|-----------|------|
+| --db | Yes | - | DBファイルパス |
+| --date | Yes | - | レース日付（YYYY-MM-DD） |
+| --venue | Yes | - | 競馬場名（例: 中山） |
+| --race | No | 全レース | レース番号 |
+
+分析ファクター:
+- 過去成績: 直近レースの着順ベースのスコア
+- コース適性: 同一条件（芝/ダート、距離）での実績
+- タイム指数: 過去のタイム実績
+- 上がり3F: 末脚の評価
+- 人気: オッズ・人気順ベースのスコア
 
 ## 依存関係
 

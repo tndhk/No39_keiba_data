@@ -31,6 +31,28 @@ JRA競馬場一覧:
 - 札幌(01)、函館(02)、福島(03)、新潟(04)、東京(05)
 - 中山(06)、中京(07)、京都(08)、阪神(09)、小倉(10)
 
+### レース分析
+
+収集したデータを基にレースを分析し、各馬のスコアを表示。
+
+```bash
+# 指定日・競馬場の全レースを分析
+keiba analyze --db data/keiba.db --date 2024-01-06 --venue 中山
+
+# 特定のレースのみ分析
+keiba analyze --db data/keiba.db --date 2024-01-06 --venue 中山 --race 11
+
+# 出力例
+# ==================================================
+# R11 第74回日刊スポ賞中山金杯(GIII)
+# 2024-01-06 中山 芝2000m
+# ==================================================
+# 枠  馬  馬名                過去  適性  タイム  上がり  人気   合計
+# --------------------------------------------------
+#  1   1  ○○○○○○            8.5   7.2    6.8    7.5    6.0   36.0
+#  2   3  △△△△△△            7.2   8.0    7.5    6.8    7.5   37.0
+```
+
 ### 馬詳細データの収集
 
 レース結果から取得した馬IDに基づき、馬の詳細情報（血統・成績）を収集。
@@ -88,6 +110,26 @@ sqlite3 data/keiba.db ".schema"
 | jockeys | 騎手情報 |
 | trainers | 調教師情報 |
 | race_results | レース結果 |
+| owners | 馬主情報 |
+| breeders | 生産者情報 |
+
+### race_resultsテーブルの拡張カラム
+
+最新バージョンでは以下のカラムが追加されています:
+
+| カラム | 型 | 説明 |
+|--------|------|------|
+| last_3f | REAL | 上がり3F（秒） |
+| sex | TEXT | 性別（牡/牝/セ） |
+| age | INTEGER | 年齢 |
+| impost | REAL | 斤量 |
+| passing_order | TEXT | 通過順位（例: "2-1-1-1"） |
+
+### racesテーブルの拡張カラム
+
+| カラム | 型 | 説明 |
+|--------|------|------|
+| grade | TEXT | グレード/クラス（G1, G2, G3, L, OP, 1WIN等） |
 
 ### データ件数確認
 
@@ -117,15 +159,28 @@ sqlite3 data/keiba.db ".backup data/backup.db" && gzip data/backup.db
 
 症状:
 ```
-sqlite3.OperationalError: no such column: horses.sire
+sqlite3.OperationalError: no such column: races.grade
 ```
 
 原因: モデル変更後にDBマイグレーションが未実行
 
-解決:
+解決方法1: 不足カラムを追加
 ```bash
-# 不足カラムを追加
-sqlite3 data/keiba.db "ALTER TABLE horses ADD COLUMN sire TEXT;"
+# racesテーブルにgradeカラムを追加
+sqlite3 data/keiba.db "ALTER TABLE races ADD COLUMN grade TEXT;"
+
+# race_resultsテーブルに拡張カラムを追加
+sqlite3 data/keiba.db "ALTER TABLE race_results ADD COLUMN last_3f REAL;"
+sqlite3 data/keiba.db "ALTER TABLE race_results ADD COLUMN sex TEXT;"
+sqlite3 data/keiba.db "ALTER TABLE race_results ADD COLUMN age INTEGER;"
+sqlite3 data/keiba.db "ALTER TABLE race_results ADD COLUMN impost REAL;"
+sqlite3 data/keiba.db "ALTER TABLE race_results ADD COLUMN passing_order TEXT;"
+```
+
+解決方法2: DBを削除して再作成（データが少ない場合）
+```bash
+rm data/keiba.db
+keiba scrape --year 2024 --month 1 --db data/keiba.db --jra-only
 ```
 
 ### 2. HTTPエラー (403/429)
