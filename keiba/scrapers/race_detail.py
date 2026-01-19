@@ -120,6 +120,8 @@ class RaceDetailScraper(BaseScraper):
         Supports multiple formats:
         - Standard: "ダ左1500m / 天候 : 晴 / ダート : 良"
         - Alternate: "2880m / 芝 : 左 / 馬 : 牡"
+        - Hurdle: "障芝 ダート2880m / 天候 : 晴 / 芝 : 稍重"
+        - NAR: "1500m / ダート : 左 / 天候 : 晴 / ダート : 良"
 
         Args:
             text: Text containing race conditions.
@@ -127,6 +129,14 @@ class RaceDetailScraper(BaseScraper):
         """
         parts = [p.strip() for p in text.split("/")]
         for part in parts:
+            # Pattern 0: Hurdle race format - "障芝 ダート2880m" or "障芝2880m"
+            # These are steeplechase/hurdle races
+            hurdle_match = re.search(r"障芝\s*(?:ダート)?\s*(\d+)m", part)
+            if hurdle_match:
+                race_info["surface"] = "障害"
+                race_info["distance"] = int(hurdle_match.group(1))
+                continue
+
             # Pattern 1: Standard format - surface + direction + distance
             # e.g., "ダ左1500m", "芝右1600m", "障芝3000m"
             dist_match = re.search(r"(ダ|芝|障)[左右直]?\s*外?\s*(\d+)m", part)
@@ -163,6 +173,10 @@ class RaceDetailScraper(BaseScraper):
             track_match = re.search(r"(?:ダート|芝)\s*[:：]\s*(良|稍重|重|不良)", part)
             if track_match:
                 race_info["track_condition"] = track_match.group(1)
+
+        # Set default surface if not found
+        if "surface" not in race_info:
+            race_info["surface"] = "不明"
 
     def _parse_results(self, soup: BeautifulSoup) -> list[dict]:
         """Parse race results from the page.

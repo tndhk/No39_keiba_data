@@ -530,6 +530,13 @@ def race_detail_scraper():
     return RaceDetailScraper(delay=0)
 
 
+@pytest.fixture
+def race_detail_hurdle_html():
+    """障害レース用テストHTMLフィクスチャを読み込む"""
+    fixture_path = Path(__file__).parent / "fixtures" / "race_detail_hurdle.html"
+    return fixture_path.read_text(encoding="utf-8")
+
+
 class TestRaceDetailScraperInit:
     """RaceDetailScraper初期化のテスト"""
 
@@ -663,6 +670,107 @@ class TestRaceDetailScraperParse:
         assert dq_horse["finish_position"] is None  # 中止は順位なし
         assert dq_horse["horse_name"] == "テスト馬"
         assert dq_horse["time"] == ""  # タイムなし
+
+    def test_parse_hurdle_race(self, race_detail_scraper, race_detail_hurdle_html):
+        """parse()は障害レース（障芝 ダート形式）を正しくパースする"""
+        soup = race_detail_scraper.get_soup(race_detail_hurdle_html)
+        result = race_detail_scraper.parse(soup, race_id="202406020604")
+        race = result["race"]
+
+        assert race["id"] == "202406020604"
+        assert race["name"] == "障害4歳以上未勝利"
+        assert race["date"] == "2024年03月10日"
+        assert race["course"] == "中山"
+        assert race["race_number"] == 4
+        assert race["distance"] == 2880
+        assert race["surface"] == "障害"
+        assert race["weather"] == "晴"
+        assert race["track_condition"] == "稍重"
+
+
+class TestRaceDetailScraperParseRaceConditions:
+    """RaceDetailScraper._parse_race_conditions()のテスト"""
+
+    def test_parse_standard_turf_format(self, race_detail_scraper):
+        """標準的な芝レースフォーマット（芝右1600m）をパースする"""
+        race_info = {}
+        race_detail_scraper._parse_race_conditions(
+            "芝右1600m / 天候 : 晴 / 芝 : 良", race_info
+        )
+        assert race_info["surface"] == "芝"
+        assert race_info["distance"] == 1600
+        assert race_info["weather"] == "晴"
+        assert race_info["track_condition"] == "良"
+
+    def test_parse_standard_dirt_format(self, race_detail_scraper):
+        """標準的なダートレースフォーマット（ダ左1500m）をパースする"""
+        race_info = {}
+        race_detail_scraper._parse_race_conditions(
+            "ダ左1500m / 天候 : 曇 / ダート : 稍重", race_info
+        )
+        assert race_info["surface"] == "ダート"
+        assert race_info["distance"] == 1500
+        assert race_info["weather"] == "曇"
+        assert race_info["track_condition"] == "稍重"
+
+    def test_parse_hurdle_format(self, race_detail_scraper):
+        """障害レースフォーマット（障芝 ダート2880m）をパースする"""
+        race_info = {}
+        race_detail_scraper._parse_race_conditions(
+            "障芝 ダート2880m / 天候 : 晴 / 芝 : 稍重", race_info
+        )
+        assert race_info["surface"] == "障害"
+        assert race_info["distance"] == 2880
+        assert race_info["weather"] == "晴"
+        assert race_info["track_condition"] == "稍重"
+
+    def test_parse_hurdle_without_dart(self, race_detail_scraper):
+        """障害レースフォーマット（障芝3000m、ダートなし）をパースする"""
+        race_info = {}
+        race_detail_scraper._parse_race_conditions(
+            "障芝3000m / 天候 : 晴 / 芝 : 良", race_info
+        )
+        assert race_info["surface"] == "障害"
+        assert race_info["distance"] == 3000
+
+    def test_parse_nar_format_distance_only_first(self, race_detail_scraper):
+        """地方競馬フォーマット（距離が先に来る形式）をパースする"""
+        race_info = {}
+        race_detail_scraper._parse_race_conditions(
+            "1500m / ダート : 左 / 天候 : 晴 / ダート : 良", race_info
+        )
+        assert race_info["surface"] == "ダート"
+        assert race_info["distance"] == 1500
+
+    def test_parse_nar_format_with_course_direction(self, race_detail_scraper):
+        """地方競馬フォーマット（コース方向が明示されるケース）をパースする"""
+        race_info = {}
+        race_detail_scraper._parse_race_conditions(
+            "1400m / ダート : 左 外 / 天候 : 晴 / ダート : 重", race_info
+        )
+        assert race_info["surface"] == "ダート"
+        assert race_info["distance"] == 1400
+        assert race_info["track_condition"] == "重"
+
+    def test_parse_nar_turf_format(self, race_detail_scraper):
+        """地方競馬の芝レースフォーマットをパースする"""
+        race_info = {}
+        race_detail_scraper._parse_race_conditions(
+            "1800m / 芝 : 右 / 天候 : 晴 / 芝 : 良", race_info
+        )
+        assert race_info["surface"] == "芝"
+        assert race_info["distance"] == 1800
+
+    def test_parse_sets_default_surface_when_not_found(self, race_detail_scraper):
+        """surfaceが見つからない場合はデフォルト値を設定する"""
+        race_info = {}
+        race_detail_scraper._parse_race_conditions(
+            "1200m / 天候 : 晴 / 発走 : 11:00", race_info
+        )
+        # 距離は取得できる
+        assert race_info["distance"] == 1200
+        # surfaceはデフォルトで「不明」
+        assert race_info.get("surface") == "不明"
 
 
 class TestRaceDetailScraperBuildUrl:

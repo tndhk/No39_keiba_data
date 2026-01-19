@@ -1,14 +1,12 @@
 """Tests for keiba.cli module."""
 
-import calendar
 from datetime import date
-from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
 
-from keiba.cli import main, scrape
+from keiba.cli import main
 
 
 class TestMainGroup:
