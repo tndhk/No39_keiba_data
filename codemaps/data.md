@@ -1,6 +1,6 @@
 # Data Models Codemap
 
-> Freshness: 2026-01-19T09:15:00+09:00
+> Freshness: 2026-01-19 (Verified against codebase)
 
 ## Entity Relationship
 
@@ -55,6 +55,8 @@
 | total_races | Integer | Yes | Career race count |
 | total_wins | Integer | Yes | Career wins |
 | total_earnings | Integer | Yes | Total earnings (万円) |
+| created_at | DateTime | No | Record creation time |
+| updated_at | DateTime | No | Record update time |
 
 ### RaceResult
 

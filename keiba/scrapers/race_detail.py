@@ -117,14 +117,18 @@ class RaceDetailScraper(BaseScraper):
     def _parse_race_conditions(self, text: str, race_info: dict) -> None:
         """Parse race conditions from text.
 
+        Supports multiple formats:
+        - Standard: "ダ左1500m / 天候 : 晴 / ダート : 良"
+        - Alternate: "2880m / 芝 : 左 / 馬 : 牡"
+
         Args:
-            text: Text containing race conditions (e.g., "ダ左1500m / 天候 : 晴")
+            text: Text containing race conditions.
             race_info: Dictionary to update with parsed values.
         """
         parts = [p.strip() for p in text.split("/")]
         for part in parts:
-            # Parse distance and surface (e.g., "ダ左1500m")
-            # "ダ" = ダート, "芝" = 芝, "障" = 障害
+            # Pattern 1: Standard format - surface + direction + distance
+            # e.g., "ダ左1500m", "芝右1600m", "障芝3000m"
             dist_match = re.search(r"(ダ|芝|障)[左右直]?\s*外?\s*(\d+)m", part)
             if dist_match:
                 surface = dist_match.group(1)
@@ -132,16 +136,33 @@ class RaceDetailScraper(BaseScraper):
                     surface = "ダート"
                 race_info["surface"] = surface
                 race_info["distance"] = int(dist_match.group(2))
+                continue
+
+            # Pattern 2: Distance only (e.g., "2880m")
+            if "distance" not in race_info:
+                dist_only_match = re.search(r"(\d+)m", part)
+                if dist_only_match:
+                    race_info["distance"] = int(dist_only_match.group(1))
+                    continue
+
+            # Pattern 3: Surface with direction (e.g., "芝 : 左", "ダート : 右")
+            if "surface" not in race_info:
+                surface_match = re.search(r"(芝|ダート|障害)\s*[:：]\s*[左右直]", part)
+                if surface_match:
+                    race_info["surface"] = surface_match.group(1)
+                    continue
 
             # Parse weather (e.g., "天候 : 晴")
             weather_match = re.search(r"天候\s*[:：]\s*(.+)", part)
             if weather_match:
                 race_info["weather"] = weather_match.group(1).strip()
+                continue
 
             # Parse track condition (e.g., "ダート : 良" or "芝 : 良")
-            track_match = re.search(r"(?:ダート|芝)\s*[:：]\s*(.+)", part)
+            # Only match track conditions, not directions
+            track_match = re.search(r"(?:ダート|芝)\s*[:：]\s*(良|稍重|重|不良)", part)
             if track_match:
-                race_info["track_condition"] = track_match.group(1).strip()
+                race_info["track_condition"] = track_match.group(1)
 
     def _parse_results(self, soup: BeautifulSoup) -> list[dict]:
         """Parse race results from the page.

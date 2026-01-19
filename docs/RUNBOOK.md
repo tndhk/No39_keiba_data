@@ -9,11 +9,14 @@
 指定した年月のレースデータをnetkeibaから収集してSQLiteに保存。
 
 ```bash
-# 基本コマンド
+# 全競馬場（JRA + NAR）のレースを収集
 keiba scrape --year 2024 --month 3 --db data/keiba.db
 
+# 中央競馬（JRA）のみ収集（推奨：データ品質が高い）
+keiba scrape --year 2024 --month 3 --db data/keiba.db --jra-only
+
 # 出力例
-# データ収集開始: 2024年3月
+# データ収集開始: 2024年3月 (中央競馬のみ)
 # データベース: data/keiba.db
 #   2024/03/01 のレースを取得中...
 #     保存: 202403010101 - レース名
@@ -23,6 +26,10 @@ keiba scrape --year 2024 --month 3 --db data/keiba.db
 #   保存済み: 145
 #   スキップ: 5
 ```
+
+JRA競馬場一覧:
+- 札幌(01)、函館(02)、福島(03)、新潟(04)、東京(05)
+- 中山(06)、中京(07)、京都(08)、阪神(09)、小倉(10)
 
 ### 馬詳細データの収集
 
@@ -54,8 +61,11 @@ keiba scrape-horses --db data/keiba.db --limit 500
 ### crontabでの設定例
 
 ```bash
-# 毎日深夜2時に前月のデータを収集
-0 2 1 * * cd /path/to/No39_keiba && keiba scrape --year $(date -d "last month" +\%Y) --month $(date -d "last month" +\%m) --db data/keiba.db >> logs/scrape.log 2>&1
+# 毎月1日深夜2時に前月のJRAレースデータを収集
+0 2 1 * * cd /path/to/No39_keiba && keiba scrape --year $(date -d "last month" +\%Y) --month $(date -d "last month" +\%m) --db data/keiba.db --jra-only >> logs/scrape.log 2>&1
+
+# 毎月1日深夜2時に前月の全競馬場データを収集（NAR含む）
+# 0 2 1 * * cd /path/to/No39_keiba && keiba scrape --year $(date -d "last month" +\%Y) --month $(date -d "last month" +\%m) --db data/keiba.db >> logs/scrape.log 2>&1
 
 # 毎日深夜3時に馬詳細を100件ずつ収集
 0 3 * * * cd /path/to/No39_keiba && keiba scrape-horses --db data/keiba.db --limit 100 >> logs/horses.log 2>&1

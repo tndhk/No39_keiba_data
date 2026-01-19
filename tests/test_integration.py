@@ -297,8 +297,8 @@ class TestScraperDatabaseIntegration:
         soup = scraper.get_soup(race_list_html)
         urls = scraper.parse(soup)
 
-        # URL数の確認
-        assert len(urls) == 5
+        # URL数の確認（JRA5 + NAR2）
+        assert len(urls) == 7
 
         # レースIDの抽出
         race_ids = [extract_race_id_from_url(url) for url in urls]
@@ -308,6 +308,8 @@ class TestScraperDatabaseIntegration:
             "202401010103",
             "202401010201",
             "202401010202",
+            "202445010101",
+            "202445010102",
         ]
         assert race_ids == expected_ids
 
@@ -408,7 +410,7 @@ class TestCLIIntegration:
         # RaceListScraperのモック設定
         mock_list_scraper = MagicMock()
 
-        def fetch_race_urls_side_effect(year, month, day):
+        def fetch_race_urls_side_effect(year, month, day, jra_only=False):
             # 1日目だけレースを返す
             if day == 1:
                 return ["https://race.netkeiba.com/race/202401010101.html"]
@@ -589,10 +591,10 @@ class TestEndToEndDataFlow:
 
     def test_complete_data_flow(self, tmp_db, race_list_html, race_detail_html):
         """完全なデータフロー: スクレイピング -> パース -> 保存 -> 取得"""
-        # Step 1: レースリストをパース
+        # Step 1: レースリストをパース（JRAのみ）
         list_scraper = RaceListScraper(delay=0)
         list_soup = list_scraper.get_soup(race_list_html)
-        race_urls = list_scraper.parse(list_soup)
+        race_urls = list_scraper.parse(list_soup, jra_only=True)
 
         assert len(race_urls) == 5
 

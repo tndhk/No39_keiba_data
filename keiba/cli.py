@@ -58,9 +58,11 @@ def main():
 @click.option("--year", required=True, type=int, help="取得する年")
 @click.option("--month", required=True, type=int, help="取得する月")
 @click.option("--db", required=True, type=click.Path(), help="DBファイルパス")
-def scrape(year: int, month: int, db: str):
+@click.option("--jra-only", is_flag=True, default=False, help="中央競馬のみ取得")
+def scrape(year: int, month: int, db: str, jra_only: bool):
     """指定した年月のレースデータを収集"""
-    click.echo(f"データ収集開始: {year}年{month}月")
+    scope = "中央競馬のみ" if jra_only else "全競馬場"
+    click.echo(f"データ収集開始: {year}年{month}月 ({scope})")
     click.echo(f"データベース: {db}")
 
     # DBを初期化
@@ -85,7 +87,9 @@ def scrape(year: int, month: int, db: str):
             click.echo(f"  {year}/{month:02d}/{day:02d} のレースを取得中...")
 
             try:
-                race_urls = race_list_scraper.fetch_race_urls(year, month, day)
+                race_urls = race_list_scraper.fetch_race_urls(
+                    year, month, day, jra_only=jra_only
+                )
             except Exception as e:
                 click.echo(f"    レース一覧取得エラー: {e}")
                 continue

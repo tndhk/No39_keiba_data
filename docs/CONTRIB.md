@@ -43,10 +43,43 @@ tests/
 
 ## CLIコマンド
 
-| コマンド | 説明 | 例 |
-|----------|------|-----|
-| `keiba scrape` | 指定年月のレースデータを収集 | `keiba scrape --year 2024 --month 3 --db data/keiba.db` |
-| `keiba scrape-horses` | 詳細未取得の馬情報を収集 | `keiba scrape-horses --db data/keiba.db --limit 100` |
+### keiba scrape
+
+指定した年月のレースデータをnetkeibaから収集してSQLiteに保存。
+
+```bash
+# 基本使用法
+keiba scrape --year 2024 --month 3 --db data/keiba.db
+
+# 中央競馬（JRA）のみ取得
+keiba scrape --year 2024 --month 3 --db data/keiba.db --jra-only
+```
+
+| オプション | 必須 | デフォルト | 説明 |
+|-----------|------|-----------|------|
+| --year | Yes | - | 取得する年 |
+| --month | Yes | - | 取得する月 |
+| --db | Yes | - | DBファイルパス |
+| --jra-only | No | False | 中央競馬（JRA）のみ取得。NAR（地方競馬）を除外 |
+
+JRA競馬場（`--jra-only`対象）: 札幌、函館、福島、新潟、東京、中山、中京、京都、阪神、小倉
+
+### keiba scrape-horses
+
+詳細未取得の馬情報（血統・成績）を収集。レース結果から取得した馬IDに基づいて詳細を取得。
+
+```bash
+# デフォルト100件取得
+keiba scrape-horses --db data/keiba.db
+
+# 500件取得
+keiba scrape-horses --db data/keiba.db --limit 500
+```
+
+| オプション | 必須 | デフォルト | 説明 |
+|-----------|------|-----------|------|
+| --db | Yes | - | DBファイルパス |
+| --limit | No | 100 | 取得する馬の数 |
 
 ## 依存関係
 

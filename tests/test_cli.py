@@ -233,7 +233,7 @@ class TestScrapeDataSaving:
         # 1日目だけレースがあり、それ以外は空
         mock_list_scraper = MagicMock()
         call_count = [0]
-        def fetch_side_effect(year, month, day):
+        def fetch_side_effect(year, month, day, jra_only=False):
             call_count[0] += 1
             if day == 1:
                 return ["https://race.netkeiba.com/race/202401010101.html"]

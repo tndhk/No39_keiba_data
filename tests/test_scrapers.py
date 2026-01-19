@@ -247,6 +247,90 @@ class TestRaceListScraperInit:
         assert RaceListScraper.BASE_URL == "https://db.netkeiba.com"
 
 
+class TestRaceListScraperIsJraRace:
+    """RaceListScraper.is_jra_race()のテスト"""
+
+    def test_jra_race_sapporo(self):
+        """札幌競馬場（01）はJRA"""
+        url = "https://db.netkeiba.com/race/202401010101/"
+        assert RaceListScraper.is_jra_race(url) is True
+
+    def test_jra_race_hakodate(self):
+        """函館競馬場（02）はJRA"""
+        url = "https://db.netkeiba.com/race/202402010101/"
+        assert RaceListScraper.is_jra_race(url) is True
+
+    def test_jra_race_fukushima(self):
+        """福島競馬場（03）はJRA"""
+        url = "https://db.netkeiba.com/race/202403010101/"
+        assert RaceListScraper.is_jra_race(url) is True
+
+    def test_jra_race_niigata(self):
+        """新潟競馬場（04）はJRA"""
+        url = "https://db.netkeiba.com/race/202404010101/"
+        assert RaceListScraper.is_jra_race(url) is True
+
+    def test_jra_race_tokyo(self):
+        """東京競馬場（05）はJRA"""
+        url = "https://db.netkeiba.com/race/202405010101/"
+        assert RaceListScraper.is_jra_race(url) is True
+
+    def test_jra_race_nakayama(self):
+        """中山競馬場（06）はJRA"""
+        url = "https://db.netkeiba.com/race/202406010101/"
+        assert RaceListScraper.is_jra_race(url) is True
+
+    def test_jra_race_chukyo(self):
+        """中京競馬場（07）はJRA"""
+        url = "https://db.netkeiba.com/race/202407010101/"
+        assert RaceListScraper.is_jra_race(url) is True
+
+    def test_jra_race_kyoto(self):
+        """京都競馬場（08）はJRA"""
+        url = "https://db.netkeiba.com/race/202408010101/"
+        assert RaceListScraper.is_jra_race(url) is True
+
+    def test_jra_race_hanshin(self):
+        """阪神競馬場（09）はJRA"""
+        url = "https://db.netkeiba.com/race/202409010101/"
+        assert RaceListScraper.is_jra_race(url) is True
+
+    def test_jra_race_kokura(self):
+        """小倉競馬場（10）はJRA"""
+        url = "https://db.netkeiba.com/race/202410010101/"
+        assert RaceListScraper.is_jra_race(url) is True
+
+    def test_nar_race_kawasaki(self):
+        """川崎競馬場（45）はNAR"""
+        url = "https://db.netkeiba.com/race/202445010101/"
+        assert RaceListScraper.is_jra_race(url) is False
+
+    def test_nar_race_ooi(self):
+        """大井競馬場（42）はNAR"""
+        url = "https://db.netkeiba.com/race/202442010101/"
+        assert RaceListScraper.is_jra_race(url) is False
+
+    def test_nar_race_funabashi(self):
+        """船橋競馬場（43）はNAR"""
+        url = "https://db.netkeiba.com/race/202443010101/"
+        assert RaceListScraper.is_jra_race(url) is False
+
+    def test_nar_race_monbetsu(self):
+        """門別競馬場（30）はNAR"""
+        url = "https://db.netkeiba.com/race/202430010101/"
+        assert RaceListScraper.is_jra_race(url) is False
+
+    def test_invalid_url_format(self):
+        """不正なURLフォーマット"""
+        url = "https://db.netkeiba.com/horse/2019104251/"
+        assert RaceListScraper.is_jra_race(url) is False
+
+    def test_invalid_race_id_too_short(self):
+        """短すぎるレースID"""
+        url = "https://db.netkeiba.com/race/2024010101/"
+        assert RaceListScraper.is_jra_race(url) is False
+
+
 class TestRaceListScraperParse:
     """RaceListScraper.parse()のテスト"""
 
@@ -260,8 +344,8 @@ class TestRaceListScraperParse:
         """parse()は全てのレースURLを抽出する"""
         soup = race_list_scraper.get_soup(race_list_html)
         result = race_list_scraper.parse(soup)
-        # フィクスチャには5つのレースリンクがある
-        assert len(result) == 5
+        # フィクスチャには7つのレースリンクがある（JRA5 + NAR2）
+        assert len(result) == 7
 
     def test_parse_returns_full_urls(self, race_list_scraper, race_list_html):
         """parse()は完全なURLを返す"""
@@ -281,10 +365,28 @@ class TestRaceListScraperParse:
             "202401010103",
             "202401010201",
             "202401010202",
+            "202445010101",
+            "202445010102",
         ]
         for race_id in expected_race_ids:
             expected_url = f"https://db.netkeiba.com/race/{race_id}/"
             assert expected_url in result
+
+    def test_parse_jra_only_filters_nar_races(self, race_list_scraper, race_list_html):
+        """parse(jra_only=True)は地方競馬を除外する"""
+        soup = race_list_scraper.get_soup(race_list_html)
+        result = race_list_scraper.parse(soup, jra_only=True)
+        # JRAレースのみ5件
+        assert len(result) == 5
+        # 川崎競馬場（45）のレースは含まれない
+        for url in result:
+            assert "/race/202445" not in url
+
+    def test_parse_jra_only_false_includes_all(self, race_list_scraper, race_list_html):
+        """parse(jra_only=False)は全レースを返す"""
+        soup = race_list_scraper.get_soup(race_list_html)
+        result = race_list_scraper.parse(soup, jra_only=False)
+        assert len(result) == 7
 
     def test_parse_excludes_non_race_links(self, race_list_scraper, race_list_html):
         """parse()はレース以外のリンクを除外する"""
@@ -365,7 +467,7 @@ class TestRaceListScraperFetchRaceUrls:
         result = race_list_scraper.fetch_race_urls(year=2024, month=1, day=1)
 
         assert isinstance(result, list)
-        assert len(result) == 5
+        assert len(result) == 7  # JRA5 + NAR2
         assert all(url.startswith("https://") for url in result)
 
     @patch.object(RaceListScraper, "fetch")
@@ -377,6 +479,29 @@ class TestRaceListScraperFetchRaceUrls:
 
         result = race_list_scraper.fetch_race_urls(year=2024, month=1, day=1)
 
+        expected_urls = [
+            "https://db.netkeiba.com/race/202401010101/",
+            "https://db.netkeiba.com/race/202401010102/",
+            "https://db.netkeiba.com/race/202401010103/",
+            "https://db.netkeiba.com/race/202401010201/",
+            "https://db.netkeiba.com/race/202401010202/",
+            "https://db.netkeiba.com/race/202445010101/",
+            "https://db.netkeiba.com/race/202445010102/",
+        ]
+        assert result == expected_urls
+
+    @patch.object(RaceListScraper, "fetch")
+    def test_fetch_race_urls_jra_only(
+        self, mock_fetch, race_list_scraper, race_list_html
+    ):
+        """fetch_race_urls(jra_only=True)はJRAレースのみを返す"""
+        mock_fetch.return_value = race_list_html
+
+        result = race_list_scraper.fetch_race_urls(
+            year=2024, month=1, day=1, jra_only=True
+        )
+
+        assert len(result) == 5
         expected_urls = [
             "https://db.netkeiba.com/race/202401010101/",
             "https://db.netkeiba.com/race/202401010102/",

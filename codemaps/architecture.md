@@ -1,6 +1,6 @@
 # Architecture Codemap
 
-> Freshness: 2026-01-19T09:15:00+09:00
+> Freshness: 2026-01-19 (Verified against codebase)
 
 ## System Overview
 
@@ -28,12 +28,15 @@
 
 ```
 keiba/
+├── __init__.py     → (empty)
+├── __main__.py     → cli
 ├── cli.py          → models, scrapers, db
+├── constants.py    → (standalone) JRA_COURSE_CODES
 ├── db.py           → models.base (Base)
 ├── models/
 │   ├── __init__.py → all model modules
 │   ├── base.py     → sqlalchemy
-│   ├── horse.py    → base
+│   ├── horse.py    → base, datetime
 │   ├── race.py     → base
 │   ├── race_result.py → base
 │   ├── jockey.py   → base
@@ -42,8 +45,8 @@ keiba/
 │   └── breeder.py  → base
 └── scrapers/
     ├── __init__.py → all scraper modules
-    ├── base.py     → requests, bs4
-    ├── race_list.py → base
+    ├── base.py     → requests, bs4, time
+    ├── race_list.py → base, constants
     ├── race_detail.py → base
     └── horse_detail.py → base
 ```
@@ -82,3 +85,23 @@ keiba/
 |-------|--------|----------|
 | `keiba` | keiba.cli | main() |
 | `python -m keiba` | keiba.__main__ | main() |
+
+## CLI Commands
+
+| Command | Description | Key Options |
+|---------|-------------|-------------|
+| `keiba scrape` | Collect race data | --year, --month, --db, --jra-only |
+| `keiba scrape-horses` | Collect horse details | --db, --limit |
+
+### --jra-only Option
+
+Filters races to JRA (Japan Racing Association) only, excluding NAR (regional racing).
+Uses course codes defined in `keiba/constants.py`:
+
+```
+JRA Course Codes:
+01=札幌, 02=函館, 03=福島, 04=新潟, 05=東京
+06=中山, 07=中京, 08=京都, 09=阪神, 10=小倉
+```
+
+Race ID format: `YYYYPPNNRRXX` where PP is the course code.
