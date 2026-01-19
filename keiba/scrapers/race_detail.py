@@ -9,6 +9,7 @@ import re
 from bs4 import BeautifulSoup
 
 from keiba.scrapers.base import BaseScraper
+from keiba.utils.grade_extractor import extract_grade
 
 
 class RaceDetailScraper(BaseScraper):
@@ -111,6 +112,10 @@ class RaceDetailScraper(BaseScraper):
                 if "m" in text and ("天候" in text or "/" in text):
                     self._parse_race_conditions(text, race_info)
                     break
+
+        # Extract grade from race name
+        if "name" in race_info:
+            race_info["grade"] = extract_grade(race_info["name"])
 
         return race_info
 
@@ -263,6 +268,25 @@ class RaceDetailScraper(BaseScraper):
             if horse_id_match:
                 result["horse_id"] = horse_id_match.group(1)
 
+        # Column 4: Sex and age (e.g., "牡3", "牝4", "セ5")
+        if len(cells) > 4:
+            sex_age_text = cells[4].get_text(strip=True)
+            if sex_age_text:
+                sex = sex_age_text[0]
+                age_match = re.search(r"(\d+)", sex_age_text)
+                if age_match:
+                    result["sex"] = sex
+                    result["age"] = int(age_match.group(1))
+
+        # Column 5: Impost (e.g., "57.0")
+        if len(cells) > 5:
+            impost_text = cells[5].get_text(strip=True)
+            if impost_text:
+                try:
+                    result["impost"] = float(impost_text)
+                except ValueError:
+                    pass
+
         # Column 6: Jockey ID and name
         if len(cells) > 6:
             jockey_link = cells[6].find("a")
@@ -282,6 +306,25 @@ class RaceDetailScraper(BaseScraper):
         # Column 8: Margin
         if len(cells) > 8:
             result["margin"] = cells[8].get_text(strip=True)
+
+        # Column 10: Passing order (e.g., "2-1-1-1")
+        if len(cells) > 10:
+            passing_text = cells[10].get_text(strip=True)
+            if passing_text:
+                result["passing_order"] = passing_text
+            else:
+                result["passing_order"] = None
+
+        # Column 11: Last 3 furlongs (上がり3F)
+        if len(cells) > 11:
+            last_3f_text = cells[11].get_text(strip=True)
+            if last_3f_text:
+                try:
+                    result["last_3f"] = float(last_3f_text)
+                except ValueError:
+                    result["last_3f"] = None
+            else:
+                result["last_3f"] = None
 
         # Column 12: Odds (単勝)
         if len(cells) > 12:
@@ -324,6 +367,11 @@ class RaceDetailScraper(BaseScraper):
         result.setdefault("popularity", None)
         result.setdefault("weight", None)
         result.setdefault("weight_diff", None)
+        result.setdefault("last_3f", None)
+        result.setdefault("sex", None)
+        result.setdefault("age", None)
+        result.setdefault("impost", None)
+        result.setdefault("passing_order", None)
 
         return result
 

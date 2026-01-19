@@ -21,6 +21,9 @@ class Race(Base):
         surface: 芝/ダート
         weather: 天候
         track_condition: 馬場状態
+        grade: グレード/クラス情報（G1, G2, G3, Jpn1, Jpn2, Jpn3, L, OP, 3WIN, 2WIN, 1WIN,
+               DEBUT, MAIDEN, HURDLE_OP, HURDLE_MAIDEN, HURDLE_3WIN, HURDLE_2WIN,
+               HURDLE_1WIN, UNKNOWN）
         created_at: 作成日時
         updated_at: 更新日時
     """
@@ -36,6 +39,7 @@ class Race(Base):
     surface: Mapped[str] = mapped_column(String, nullable=False)
     weather: Mapped[str | None] = mapped_column(String, nullable=True)
     track_condition: Mapped[str | None] = mapped_column(String, nullable=True)
+    grade: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         default=datetime.utcnow, onupdate=datetime.utcnow

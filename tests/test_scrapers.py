@@ -671,6 +671,115 @@ class TestRaceDetailScraperParse:
         assert dq_horse["horse_name"] == "テスト馬"
         assert dq_horse["time"] == ""  # タイムなし
 
+    def test_parse_extracts_last_3f(self, race_detail_scraper, race_detail_html):
+        """parse()は上がり3Fを正しく抽出する"""
+        soup = race_detail_scraper.get_soup(race_detail_html)
+        result = race_detail_scraper.parse(soup, race_id="202401010101")
+
+        # 1着馬の上がり3F
+        first_horse = result["results"][0]
+        assert first_horse["last_3f"] == 34.8
+
+        # 2着馬の上がり3F
+        second_horse = result["results"][1]
+        assert second_horse["last_3f"] == 35.2
+
+        # 3着馬の上がり3F
+        third_horse = result["results"][2]
+        assert third_horse["last_3f"] == 35.8
+
+        # 4着馬の上がり3F
+        fourth_horse = result["results"][3]
+        assert fourth_horse["last_3f"] == 35.0
+
+    def test_parse_last_3f_none_for_disqualified(self, race_detail_scraper, race_detail_html):
+        """parse()は中止馬の上がり3FはNoneを返す"""
+        soup = race_detail_scraper.get_soup(race_detail_html)
+        result = race_detail_scraper.parse(soup, race_id="202401010101")
+
+        # 中止馬は上がり3Fがない
+        dq_horse = result["results"][4]
+        assert dq_horse["last_3f"] is None
+
+    def test_parse_extracts_sex(self, race_detail_scraper, race_detail_html):
+        """parse()は性別を正しく抽出する"""
+        soup = race_detail_scraper.get_soup(race_detail_html)
+        result = race_detail_scraper.parse(soup, race_id="202401010101")
+
+        # 1着馬: 牡5
+        first_horse = result["results"][0]
+        assert first_horse["sex"] == "牡"
+
+        # 2着馬: 牡4
+        second_horse = result["results"][1]
+        assert second_horse["sex"] == "牡"
+
+    def test_parse_extracts_age(self, race_detail_scraper, race_detail_html):
+        """parse()は年齢を正しく抽出する"""
+        soup = race_detail_scraper.get_soup(race_detail_html)
+        result = race_detail_scraper.parse(soup, race_id="202401010101")
+
+        # 1着馬: 牡5
+        first_horse = result["results"][0]
+        assert first_horse["age"] == 5
+
+        # 2着馬: 牡4
+        second_horse = result["results"][1]
+        assert second_horse["age"] == 4
+
+        # 3着馬: 牡6
+        third_horse = result["results"][2]
+        assert third_horse["age"] == 6
+
+        # 4着馬: 牡3
+        fourth_horse = result["results"][3]
+        assert fourth_horse["age"] == 3
+
+    def test_parse_extracts_impost(self, race_detail_scraper, race_detail_html):
+        """parse()は斤量を正しく抽出する"""
+        soup = race_detail_scraper.get_soup(race_detail_html)
+        result = race_detail_scraper.parse(soup, race_id="202401010101")
+
+        # 1着馬: 57.0
+        first_horse = result["results"][0]
+        assert first_horse["impost"] == 57.0
+
+        # 4着馬: 55.0
+        fourth_horse = result["results"][3]
+        assert fourth_horse["impost"] == 55.0
+
+    def test_parse_extracts_passing_order(self, race_detail_scraper, race_detail_html):
+        """parse()は通過順位を正しく抽出する"""
+        soup = race_detail_scraper.get_soup(race_detail_html)
+        result = race_detail_scraper.parse(soup, race_id="202401010101")
+
+        # 1着馬: 5-5-4-3
+        first_horse = result["results"][0]
+        assert first_horse["passing_order"] == "5-5-4-3"
+
+        # 2着馬: 3-3-3-2
+        second_horse = result["results"][1]
+        assert second_horse["passing_order"] == "3-3-3-2"
+
+        # 3着馬: 1-1-1-1
+        third_horse = result["results"][2]
+        assert third_horse["passing_order"] == "1-1-1-1"
+
+        # 4着馬: 4-4-5-4
+        fourth_horse = result["results"][3]
+        assert fourth_horse["passing_order"] == "4-4-5-4"
+
+    def test_parse_passing_order_none_for_disqualified(
+        self, race_detail_scraper, race_detail_html
+    ):
+        """parse()は中止馬の通過順位はNoneを返す"""
+        soup = race_detail_scraper.get_soup(race_detail_html)
+        result = race_detail_scraper.parse(soup, race_id="202401010101")
+
+        # 中止馬は通過順位がない
+        dq_horse = result["results"][4]
+        assert dq_horse["passing_order"] is None
+
     def test_parse_hurdle_race(self, race_detail_scraper, race_detail_hurdle_html):
         """parse()は障害レース（障芝 ダート形式）を正しくパースする"""
         soup = race_detail_scraper.get_soup(race_detail_hurdle_html)
@@ -686,6 +795,24 @@ class TestRaceDetailScraperParse:
         assert race["surface"] == "障害"
         assert race["weather"] == "晴"
         assert race["track_condition"] == "稍重"
+
+    def test_parse_extracts_grade_g1(self, race_detail_scraper, race_detail_html):
+        """parse()はG1グレードを抽出する"""
+        soup = race_detail_scraper.get_soup(race_detail_html)
+        result = race_detail_scraper.parse(soup, race_id="202401010101")
+        race = result["race"]
+
+        # fixtureのレース名は"有馬記念(G1)"
+        assert race["grade"] == "G1"
+
+    def test_parse_extracts_grade_hurdle_maiden(self, race_detail_scraper, race_detail_hurdle_html):
+        """parse()は障害未勝利グレードを抽出する"""
+        soup = race_detail_scraper.get_soup(race_detail_hurdle_html)
+        result = race_detail_scraper.parse(soup, race_id="202406020604")
+        race = result["race"]
+
+        # fixtureのレース名は"障害4歳以上未勝利"
+        assert race["grade"] == "HURDLE_MAIDEN"
 
 
 class TestRaceDetailScraperParseRaceConditions:

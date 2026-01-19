@@ -13,6 +13,7 @@ from sqlalchemy import or_
 from keiba.db import get_engine, get_session, init_db
 from keiba.models import Horse, Jockey, Race, RaceResult, Trainer
 from keiba.scrapers import HorseDetailScraper, RaceDetailScraper, RaceListScraper
+from keiba.utils.grade_extractor import extract_grade
 
 
 def extract_race_id_from_url(url: str) -> str:
@@ -150,6 +151,7 @@ def _save_race_data(session, race_data: dict) -> None:
         surface=race_info["surface"],
         weather=race_info.get("weather"),
         track_condition=race_info.get("track_condition"),
+        grade=race_info.get("grade"),
     )
     session.add(race)
 
@@ -204,6 +206,11 @@ def _save_race_data(session, race_data: dict) -> None:
             weight_diff=result["weight_diff"],
             time=result["time"],
             margin=result["margin"],
+            last_3f=result.get("last_3f"),
+            sex=result.get("sex"),
+            age=result.get("age"),
+            impost=result.get("impost"),
+            passing_order=result.get("passing_order"),
         )
         session.add(race_result)
 
@@ -317,3 +324,271 @@ def _update_horse(session, horse: Horse, horse_data: dict) -> None:
         horse.total_wins = horse_data["total_wins"]
     if horse_data.get("total_earnings") is not None:
         horse.total_earnings = horse_data["total_earnings"]
+
+
+@main.command()
+@click.option("--db", required=True, type=click.Path(), help="DBファイルパス")
+@click.option("--date", required=True, type=str, help="レース日付（YYYY-MM-DD）")
+@click.option("--venue", required=True, type=str, help="競馬場名（例: 中山）")
+@click.option("--race", type=int, default=None, help="レース番号（省略時は全レース）")
+def analyze(db: str, date: str, venue: str, race: int | None):
+    """指定した日付・競馬場のレースを分析してスコアを表示"""
+    from datetime import datetime as dt
+
+    from sqlalchemy import select
+
+    from keiba.analyzers.factors import (
+        CourseFitFactor,
+        Last3FFactor,
+        PastResultsFactor,
+        PopularityFactor,
+        TimeIndexFactor,
+    )
+    from keiba.analyzers.score_calculator import ScoreCalculator
+
+    # 日付をパース
+    try:
+        race_date = dt.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        click.echo(f"日付形式が不正です: {date}（YYYY-MM-DD形式で指定してください）")
+        return
+
+    click.echo(f"分析開始: {race_date} {venue}")
+    click.echo(f"データベース: {db}")
+    click.echo("")
+
+    # DBに接続
+    engine = get_engine(db)
+
+    with get_session(engine) as session:
+        # 対象レースを取得
+        stmt = select(Race).where(Race.date == race_date, Race.course == venue)
+        if race is not None:
+            stmt = stmt.where(Race.race_number == race)
+        stmt = stmt.order_by(Race.race_number)
+
+        races = session.execute(stmt).scalars().all()
+
+        if not races:
+            click.echo(f"レースが見つかりません: {race_date} {venue}")
+            return
+
+        # 各レースを分析
+        for target_race in races:
+            _analyze_race(session, target_race)
+
+
+def _analyze_race(session, race: Race) -> None:
+    """レースを分析してスコアを表示する
+
+    Args:
+        session: SQLAlchemyセッション
+        race: レースオブジェクト
+    """
+    from keiba.analyzers.factors import (
+        CourseFitFactor,
+        Last3FFactor,
+        PastResultsFactor,
+        PopularityFactor,
+        TimeIndexFactor,
+    )
+    from keiba.analyzers.score_calculator import ScoreCalculator
+
+    click.echo("=" * 70)
+    click.echo(f"{race.date} {race.course} {race.race_number}R {race.name} {race.surface}{race.distance}m")
+    click.echo("=" * 70)
+
+    # レース結果を取得
+    results = (
+        session.query(RaceResult)
+        .filter(RaceResult.race_id == race.id)
+        .all()
+    )
+
+    if not results:
+        click.echo("出走馬情報がありません")
+        click.echo("")
+        return
+
+    # 各馬のスコアを計算
+    calculator = ScoreCalculator()
+    factors = {
+        "past_results": PastResultsFactor(),
+        "course_fit": CourseFitFactor(),
+        "time_index": TimeIndexFactor(),
+        "last_3f": Last3FFactor(),
+        "popularity": PopularityFactor(),
+    }
+
+    scores = []
+    for result in results:
+        # 過去成績を取得
+        past_results = _get_horse_past_results(session, result.horse_id)
+
+        # 各Factorスコアを計算
+        factor_scores = {
+            "past_results": factors["past_results"].calculate(
+                result.horse_id, past_results
+            ),
+            "course_fit": factors["course_fit"].calculate(
+                result.horse_id,
+                past_results,
+                target_surface=race.surface,
+                target_distance=race.distance,
+            ),
+            "time_index": factors["time_index"].calculate(
+                result.horse_id,
+                past_results,
+                target_surface=race.surface,
+                target_distance=race.distance,
+            ),
+            "last_3f": factors["last_3f"].calculate(result.horse_id, past_results),
+            "popularity": factors["popularity"].calculate(
+                result.horse_id,
+                [],
+                odds=result.odds,
+                popularity=result.popularity,
+            ),
+        }
+
+        total_score = calculator.calculate_total(factor_scores)
+
+        scores.append(
+            {
+                "horse_number": result.horse_number,
+                "horse_name": result.horse.name if result.horse else "不明",
+                "total": total_score,
+                "past_results": factor_scores["past_results"],
+                "course_fit": factor_scores["course_fit"],
+                "time_index": factor_scores["time_index"],
+                "last_3f": factor_scores["last_3f"],
+                "popularity": factor_scores["popularity"],
+            }
+        )
+
+    # スコアでソート（高い順）
+    scores.sort(key=lambda x: x["total"] or 0, reverse=True)
+
+    # 表形式で出力
+    _print_score_table(scores)
+    click.echo("")
+
+
+def _get_horse_past_results(session, horse_id: str) -> list[dict]:
+    """馬の過去成績を取得する
+
+    Args:
+        session: SQLAlchemyセッション
+        horse_id: 馬ID
+
+    Returns:
+        過去成績のリスト
+    """
+    from sqlalchemy import func
+
+    # 過去のレース結果を取得
+    past_results_query = (
+        session.query(RaceResult, Race, func.count(RaceResult.id).over().label("total_runners"))
+        .join(Race, RaceResult.race_id == Race.id)
+        .filter(RaceResult.horse_id == horse_id)
+        .order_by(Race.date.desc())
+        .limit(20)
+    )
+
+    results = []
+    for race_result, race_info, _ in past_results_query:
+        # 同じレースの出走頭数を取得
+        total_runners = (
+            session.query(RaceResult)
+            .filter(RaceResult.race_id == race_info.id)
+            .count()
+        )
+
+        results.append(
+            {
+                "horse_id": race_result.horse_id,
+                "finish_position": race_result.finish_position,
+                "total_runners": total_runners,
+                "surface": race_info.surface,
+                "distance": race_info.distance,
+                "time": race_result.time,
+                "last_3f": race_result.last_3f,
+                "race_date": race_info.date,
+            }
+        )
+
+    return results
+
+
+def _print_score_table(scores: list[dict]) -> None:
+    """スコアテーブルを表示する
+
+    Args:
+        scores: スコアリスト
+    """
+    # ヘッダー
+    click.echo(
+        f"{'順位':^4} | {'馬番':^4} | {'馬名':^12} | {'総合':^6} | {'過去':^6} | "
+        f"{'適性':^6} | {'タイム':^6} | {'上がり':^6} | {'人気':^6}"
+    )
+    click.echo("-" * 82)
+
+    # 各馬のスコア
+    for rank, score in enumerate(scores, 1):
+        total = f"{score['total']:.1f}" if score["total"] is not None else "-"
+        past = f"{score['past_results']:.1f}" if score["past_results"] is not None else "-"
+        course = f"{score['course_fit']:.1f}" if score["course_fit"] is not None else "-"
+        time_idx = f"{score['time_index']:.1f}" if score["time_index"] is not None else "-"
+        last_3f = f"{score['last_3f']:.1f}" if score["last_3f"] is not None else "-"
+        pop = f"{score['popularity']:.1f}" if score["popularity"] is not None else "-"
+
+        # 馬名を12文字に切り詰め
+        horse_name = score["horse_name"][:12] if len(score["horse_name"]) > 12 else score["horse_name"]
+
+        click.echo(
+            f"{rank:^4} | {score['horse_number']:^4} | {horse_name:^12} | "
+            f"{total:^6} | {past:^6} | {course:^6} | {time_idx:^6} | {last_3f:^6} | {pop:^6}"
+        )
+
+
+@main.command("migrate-grades")
+@click.option("--db", required=True, type=click.Path(), help="DBファイルパス")
+def migrate_grades(db: str):
+    """既存レースにグレード情報を追加する
+
+    gradeがNullのレースに対して、レース名からグレードを抽出して更新する。
+    """
+    click.echo(f"グレード情報マイグレーション開始")
+    click.echo(f"データベース: {db}")
+
+    # DBに接続
+    engine = get_engine(db)
+
+    # 統計情報
+    total_updated = 0
+
+    with get_session(engine) as session:
+        # gradeがNullのレースを取得
+        races = session.query(Race).filter(Race.grade.is_(None)).all()
+
+        if not races:
+            click.echo("グレード未設定のレースはありません。")
+            click.echo("")
+            click.echo("完了")
+            return
+
+        click.echo(f"グレード未設定のレース: {len(races)}件")
+        click.echo("")
+
+        for race in races:
+            grade = extract_grade(race.name)
+            race.grade = grade
+            total_updated += 1
+
+            if total_updated % 100 == 0:
+                click.echo(f"  {total_updated}件処理...")
+
+    click.echo("")
+    click.echo("=" * 50)
+    click.echo("完了")
+    click.echo(f"  更新したレース: {total_updated}件")

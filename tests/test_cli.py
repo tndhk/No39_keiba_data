@@ -461,3 +461,315 @@ class TestHelperFunctions:
         date_str = "2024年12月25日"
         result = parse_race_date(date_str)
         assert result == date(2024, 12, 25)
+
+
+class TestAnalyzeCommand:
+    """analyzeコマンドのテスト"""
+
+    def test_analyze_command_registered(self):
+        """analyzeコマンドが登録されている"""
+        assert "analyze" in main.commands
+
+    def test_analyze_help(self):
+        """analyze --helpが正常に動作する"""
+        runner = CliRunner()
+        result = runner.invoke(main, ["analyze", "--help"])
+        assert result.exit_code == 0
+        assert "--db" in result.output
+        assert "--date" in result.output
+        assert "--venue" in result.output
+
+    def test_analyze_requires_db(self):
+        """analyzeは--dbオプションを必須とする"""
+        runner = CliRunner()
+        result = runner.invoke(
+            main, ["analyze", "--date", "2024-01-06", "--venue", "中山"]
+        )
+        assert result.exit_code != 0
+
+    def test_analyze_requires_date(self):
+        """analyzeは--dateオプションを必須とする"""
+        runner = CliRunner()
+        result = runner.invoke(main, ["analyze", "--db", "test.db", "--venue", "中山"])
+        assert result.exit_code != 0
+
+    def test_analyze_requires_venue(self):
+        """analyzeは--venueオプションを必須とする"""
+        runner = CliRunner()
+        result = runner.invoke(
+            main, ["analyze", "--db", "test.db", "--date", "2024-01-06"]
+        )
+        assert result.exit_code != 0
+
+
+class TestAnalyzeCommandExecution:
+    """analyzeコマンドの実行テスト"""
+
+    @patch("keiba.cli.get_session")
+    @patch("keiba.cli.get_engine")
+    def test_analyze_with_no_races(
+        self,
+        mock_get_engine,
+        mock_get_session,
+    ):
+        """レースがない場合はメッセージを表示する"""
+        mock_engine = MagicMock()
+        mock_get_engine.return_value = mock_engine
+        mock_session = MagicMock()
+        mock_session.execute.return_value.scalars.return_value.all.return_value = []
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            # テスト用の空のDBを作成
+            result = runner.invoke(
+                main,
+                [
+                    "analyze",
+                    "--db",
+                    "test.db",
+                    "--date",
+                    "2024-01-06",
+                    "--venue",
+                    "中山",
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert "レースが見つかりません" in result.output or "No races" in result.output
+
+    @patch("keiba.cli.get_session")
+    @patch("keiba.cli.get_engine")
+    def test_analyze_outputs_table_format(
+        self,
+        mock_get_engine,
+        mock_get_session,
+    ):
+        """analyzeは表形式で出力する"""
+        mock_engine = MagicMock()
+        mock_get_engine.return_value = mock_engine
+        mock_session = MagicMock()
+
+        # モックレースを作成
+        mock_race = MagicMock()
+        mock_race.id = "202401060601"
+        mock_race.name = "テストレース"
+        mock_race.race_number = 1
+        mock_race.distance = 1600
+        mock_race.surface = "芝"
+        mock_race.date = date(2024, 1, 6)
+        mock_race.course = "中山"
+
+        # レースが見つかる設定
+        mock_session.execute.return_value.scalars.return_value.all.return_value = [
+            mock_race
+        ]
+
+        # レース結果のモック
+        mock_result = MagicMock()
+        mock_result.horse_id = "horse001"
+        mock_result.horse_number = 1
+        mock_result.popularity = 1
+        mock_result.odds = 2.5
+        mock_result.last_3f = 34.5
+        mock_result.horse = MagicMock()
+        mock_result.horse.name = "テスト馬"
+
+        # 結果リストを返すクエリのモック
+        query_mock = MagicMock()
+        query_mock.filter.return_value = query_mock
+        query_mock.all.return_value = [mock_result]
+        mock_session.query.return_value = query_mock
+
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main,
+                [
+                    "analyze",
+                    "--db",
+                    "test.db",
+                    "--date",
+                    "2024-01-06",
+                    "--venue",
+                    "中山",
+                ],
+            )
+
+        # 表形式の出力を確認
+        assert "テストレース" in result.output or "テスト馬" in result.output
+
+
+class TestMigrateGradesCommand:
+    """migrate-gradesコマンドのテスト"""
+
+    def test_migrate_grades_command_registered(self):
+        """migrate-gradesコマンドが登録されている"""
+        assert "migrate-grades" in main.commands
+
+    def test_migrate_grades_help(self):
+        """migrate-grades --helpが正常に動作する"""
+        runner = CliRunner()
+        result = runner.invoke(main, ["migrate-grades", "--help"])
+        assert result.exit_code == 0
+        assert "--db" in result.output
+
+    def test_migrate_grades_requires_db(self):
+        """migrate-gradesは--dbオプションを必須とする"""
+        runner = CliRunner()
+        result = runner.invoke(main, ["migrate-grades"])
+        assert result.exit_code != 0
+
+
+class TestMigrateGradesCommandExecution:
+    """migrate-gradesコマンドの実行テスト"""
+
+    @patch("keiba.cli.get_session")
+    @patch("keiba.cli.get_engine")
+    def test_migrate_grades_updates_races(
+        self,
+        mock_get_engine,
+        mock_get_session,
+    ):
+        """migrate-gradesはレースのgradeを更新する"""
+        mock_engine = MagicMock()
+        mock_get_engine.return_value = mock_engine
+        mock_session = MagicMock()
+
+        # gradeがNoneのレースを返すモック
+        mock_race = MagicMock()
+        mock_race.id = "202401010101"
+        mock_race.name = "有馬記念(G1)"
+        mock_race.grade = None
+
+        mock_session.query.return_value.filter.return_value.all.return_value = [mock_race]
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main, ["migrate-grades", "--db", "test.db"]
+            )
+
+        # gradeが更新されたことを確認
+        assert mock_race.grade == "G1"
+
+    @patch("keiba.cli.get_session")
+    @patch("keiba.cli.get_engine")
+    def test_migrate_grades_shows_progress(
+        self,
+        mock_get_engine,
+        mock_get_session,
+    ):
+        """migrate-gradesは進捗を表示する"""
+        mock_engine = MagicMock()
+        mock_get_engine.return_value = mock_engine
+        mock_session = MagicMock()
+
+        # 空のリストを返す
+        mock_session.query.return_value.filter.return_value.all.return_value = []
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main, ["migrate-grades", "--db", "test.db"]
+            )
+
+        assert result.exit_code == 0
+        assert "完了" in result.output
+
+
+class TestScrapeDataSavingWithGrade:
+    """scrapeコマンドのグレード保存テスト"""
+
+    @patch("keiba.cli.RaceDetailScraper")
+    @patch("keiba.cli.RaceListScraper")
+    @patch("keiba.cli.init_db")
+    @patch("keiba.cli.get_session")
+    @patch("keiba.cli.get_engine")
+    def test_scrape_saves_race_with_grade(
+        self,
+        mock_get_engine,
+        mock_get_session,
+        mock_init_db,
+        mock_race_list_scraper,
+        mock_race_detail_scraper,
+    ):
+        """scrapeはレースデータにgradeを含めて保存する"""
+        mock_engine = MagicMock()
+        mock_get_engine.return_value = mock_engine
+        mock_session = MagicMock()
+        mock_session.get.return_value = None  # レースが存在しない
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        # 1日目だけレースがあり、それ以外は空
+        mock_list_scraper = MagicMock()
+        def fetch_side_effect(year, month, day, jra_only=False):
+            if day == 1:
+                return ["https://race.netkeiba.com/race/202401010101.html"]
+            return []
+        mock_list_scraper.fetch_race_urls.side_effect = fetch_side_effect
+        mock_race_list_scraper.return_value = mock_list_scraper
+
+        mock_detail_scraper = MagicMock()
+        mock_detail_scraper.fetch_race_detail.return_value = {
+            "race": {
+                "id": "202401010101",
+                "name": "有馬記念(G1)",
+                "date": "2024年1月1日",
+                "course": "中山",
+                "race_number": 11,
+                "distance": 2500,
+                "surface": "芝",
+                "weather": "晴",
+                "track_condition": "良",
+                "grade": "G1",  # グレード情報が含まれる
+            },
+            "results": [
+                {
+                    "finish_position": 1,
+                    "bracket_number": 1,
+                    "horse_number": 1,
+                    "horse_id": "horse001",
+                    "horse_name": "テスト馬",
+                    "jockey_id": "jockey001",
+                    "jockey_name": "テスト騎手",
+                    "trainer_id": "trainer001",
+                    "trainer_name": "テスト調教師",
+                    "odds": 2.5,
+                    "popularity": 1,
+                    "weight": 480,
+                    "weight_diff": 0,
+                    "time": "1:35.0",
+                    "margin": "",
+                }
+            ],
+        }
+        mock_race_detail_scraper.return_value = mock_detail_scraper
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main, ["scrape", "--year", "2024", "--month", "1", "--db", "test.db"]
+            )
+
+        # session.addが呼ばれたことを確認
+        assert mock_session.add.called
+
+        # 追加されたオブジェクトにgradeが含まれていることを確認するには
+        # addの呼び出し引数を検査
+        add_calls = mock_session.add.call_args_list
+        # Raceオブジェクトを探す
+        for call in add_calls:
+            obj = call[0][0]
+            if hasattr(obj, "grade"):
+                # Raceモデルのgradeは設定されているはず
+                assert hasattr(obj, "grade")

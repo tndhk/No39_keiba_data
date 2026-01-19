@@ -1,38 +1,107 @@
 Codemap Diff Report
 ===================
-Generated: 2026-01-19T09:15:00+09:00
+Generated: 2026-01-19T18:30:00+09:00
 
-Status: INITIAL GENERATION
---------------------------
-No previous codemaps existed. All files are newly created.
+Status: UPDATE COMPLETED (Auto-approved)
+----------------------------------------
+Changes were below 30% threshold, automatic update applied.
 
-Files Generated:
-- codemaps/architecture.md (NEW)
-- codemaps/backend.md (NEW)
-- codemaps/data.md (NEW)
+Change Summary by File:
+-----------------------
 
-Change Summary:
-- architecture.md: 100% new (no previous version)
-- backend.md: 100% new (no previous version)
-- data.md: 100% new (no previous version)
+1. codemaps/architecture.md
+   Previous Lines: 108
+   Current Lines: 126
+   Change Percentage: ~22%
 
-Note: frontend.md not generated (this is a CLI-only Python project with no frontend)
+   Changes:
+   - ADDED: Analyzers module in system diagram
+   - ADDED: keiba/analyzers/ directory tree (factors/, score_calculator)
+   - ADDED: keiba/config/ directory tree (weights.py)
+   - ADDED: CLI command "analyze" with options
+   - UPDATED: Data flow diagram to include analyze step
+   - UPDATED: Module dependencies to include analyzers, config
 
-Module Statistics:
-------------------
-Total Python files: 18 (excluding .venv)
-  - keiba/: 4 files
-  - keiba/models/: 9 files
-  - keiba/scrapers/: 5 files
+2. codemaps/backend.md
+   Previous Lines: 108
+   Current Lines: 196
+   Change Percentage: ~35%
+
+   Changes:
+   - ADDED: "analyze" command documentation
+   - ADDED: Internal functions (_analyze_race, _get_horse_past_results, _print_score_table)
+   - ADDED: RaceDetailScraper column parsing table (detailed Column 4,5,10 parsing)
+   - ADDED: Analyzers module section (BaseFactor, all Factor implementations)
+   - ADDED: ScoreCalculator documentation
+   - ADDED: Config module section (FACTOR_WEIGHTS)
+   - UPDATED: _save_race_data description to note new fields
+
+3. codemaps/data.md
+   Previous Lines: 120
+   Current Lines: 153
+   Change Percentage: ~25%
+
+   Changes:
+   - ADDED: RaceResult.sex column (String, Nullable)
+   - ADDED: RaceResult.age column (Integer, Nullable)
+   - ADDED: RaceResult.impost column (Float, Nullable)
+   - ADDED: RaceResult.passing_order column (String, Nullable)
+   - ADDED: "Recent Schema Changes" section documenting 2026-01-19 changes
+   - UPDATED: Migration notes with ALTER TABLE statements for new columns
+
+Overall Change Percentage: ~27% (Below 30% threshold)
+-----------------------------------------------------
+
+Module Statistics (Updated):
+----------------------------
+Total Python files: 27 (excluding .venv)
+  - keiba/: 4 files (unchanged)
+  - keiba/models/: 9 files (unchanged)
+  - keiba/scrapers/: 5 files (unchanged)
+  - keiba/analyzers/: 8 files (NEW)
+  - keiba/config/: 2 files (NEW)
 
 Models: 8 (Base, Horse, Race, RaceResult, Jockey, Trainer, Owner, Breeder)
 Scrapers: 4 (BaseScraper, RaceListScraper, RaceDetailScraper, HorseDetailScraper)
-CLI Commands: 2 (scrape, scrape-horses)
+Analyzers: 6 (BaseFactor, PastResultsFactor, CourseFitFactor, TimeIndexFactor, Last3FFactor, PopularityFactor)
+CLI Commands: 3 (scrape, scrape-horses, analyze)
+
+Key Changes Documented:
+-----------------------
+1. RaceResult Model Expansion
+   - Added: sex (Column 4 first char)
+   - Added: age (Column 4 digits)
+   - Added: impost (Column 5)
+   - Added: passing_order (Column 10)
+
+2. RaceDetailScraper Enhancement
+   - _parse_horse_row() now extracts sex/age from Column 4
+   - _parse_horse_row() now extracts impost from Column 5
+   - _parse_horse_row() now extracts passing_order from Column 10
+
+3. CLI _save_race_data Enhancement
+   - Now saves sex, age, impost, passing_order to RaceResult
+
+4. New Analyzers Module (keiba/analyzers/)
+   - BaseFactor: Abstract base class for scoring factors
+   - PastResultsFactor: Weighted average of recent race positions
+   - CourseFitFactor: Top-3 rate on matching surface/distance
+   - TimeIndexFactor: Performance vs average time
+   - Last3FFactor: Final stretch speed score
+   - PopularityFactor: Market odds/popularity score
+   - ScoreCalculator: Weighted total score calculator
+
+5. New Config Module (keiba/config/)
+   - FACTOR_WEIGHTS: Default scoring weights
+
+6. New CLI Command: analyze
+   - Options: --db, --date, --venue, --race
+   - Displays score table for race analysis
 
 Next Update Recommendation:
 ---------------------------
-Run /update-codemaps after:
-- Adding new models
-- Adding new scrapers
+Run documentation update after:
+- Adding new Factor implementations
+- Modifying scoring weights
 - Adding new CLI commands
-- Changing module dependencies
+- Changing RaceResult schema

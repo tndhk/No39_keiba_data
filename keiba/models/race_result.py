@@ -33,6 +33,11 @@ class RaceResult(Base):
         weight_diff: 馬体重増減
         time: タイム
         margin: 着差
+        last_3f: 上がり3F（秒）
+        sex: 性別（牡/牝/セ）
+        age: 年齢
+        impost: 斤量
+        passing_order: 通過順位
         created_at: 作成日時
         updated_at: 更新日時
     """
@@ -67,6 +72,11 @@ class RaceResult(Base):
     weight_diff: Mapped[int | None] = mapped_column(nullable=True)
     time: Mapped[str] = mapped_column(String, nullable=False)
     margin: Mapped[str] = mapped_column(String, nullable=False)
+    last_3f: Mapped[float | None] = mapped_column(nullable=True)
+    sex: Mapped[str | None] = mapped_column(String, nullable=True)
+    age: Mapped[int | None] = mapped_column(nullable=True)
+    impost: Mapped[float | None] = mapped_column(nullable=True)
+    passing_order: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         default=datetime.utcnow, onupdate=datetime.utcnow

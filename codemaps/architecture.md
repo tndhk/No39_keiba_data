@@ -5,68 +5,85 @@
 ## System Overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                         CLI Layer                           │
-│                        (keiba/cli.py)                       │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-          ┌───────────────┼───────────────┐
-          ▼               ▼               ▼
-┌─────────────────┐ ┌───────────┐ ┌─────────────────┐
-│    Scrapers     │ │    DB     │ │     Models      │
-│ keiba/scrapers/ │ │ keiba/db  │ │  keiba/models/  │
-└────────┬────────┘ └─────┬─────┘ └────────┬────────┘
-         │                │                │
-         ▼                ▼                ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   External Services                         │
-│              netkeiba.com    SQLite DB                      │
-└─────────────────────────────────────────────────────────────┘
++-----------------------------------------------------------------+
+|                          CLI Layer                               |
+|                        (keiba/cli.py)                            |
++---------------------------------+-------------------------------+
+                                  |
+          +-------------+---------+--------+-------------+
+          v             v                  v             v
++---------------+ +-----------+ +----------------+ +-----------+
+|   Scrapers    | |    DB     | |    Analyzers   | |   Models  |
+|keiba/scrapers/| | keiba/db  | |keiba/analyzers/| |keiba/models|
++-------+-------+ +-----+-----+ +--------+-------+ +-----+-----+
+        |               |                |               |
+        v               v                v               v
++-----------------------------------------------------------------+
+|                     External Services                            |
+|               netkeiba.com    SQLite DB                          |
++-----------------------------------------------------------------+
 ```
 
 ## Module Dependencies
 
 ```
 keiba/
-├── __init__.py     → (empty)
-├── __main__.py     → cli
-├── cli.py          → models, scrapers, db
-├── constants.py    → (standalone) JRA_COURSE_CODES
-├── db.py           → models.base (Base)
-├── models/
-│   ├── __init__.py → all model modules
-│   ├── base.py     → sqlalchemy
-│   ├── horse.py    → base, datetime
-│   ├── race.py     → base
-│   ├── race_result.py → base
-│   ├── jockey.py   → base
-│   ├── trainer.py  → base
-│   ├── owner.py    → base
-│   └── breeder.py  → base
-└── scrapers/
-    ├── __init__.py → all scraper modules
-    ├── base.py     → requests, bs4, time
-    ├── race_list.py → base, constants
-    ├── race_detail.py → base
-    └── horse_detail.py → base
++-- __init__.py     -> (empty)
++-- __main__.py     -> cli
++-- cli.py          -> models, scrapers, db, analyzers
++-- constants.py    -> (standalone) JRA_COURSE_CODES
++-- db.py           -> models.base (Base)
++-- models/
+|   +-- __init__.py -> all model modules
+|   +-- base.py     -> sqlalchemy
+|   +-- horse.py    -> base, datetime
+|   +-- race.py     -> base
+|   +-- race_result.py -> base
+|   +-- jockey.py   -> base
+|   +-- trainer.py  -> base
+|   +-- owner.py    -> base
+|   +-- breeder.py  -> base
++-- scrapers/
+|   +-- __init__.py -> all scraper modules
+|   +-- base.py     -> requests, bs4, time
+|   +-- race_list.py -> base, constants
+|   +-- race_detail.py -> base
+|   +-- horse_detail.py -> base
++-- analyzers/
+|   +-- __init__.py -> score_calculator
+|   +-- score_calculator.py -> config.weights
+|   +-- factors/
+|       +-- __init__.py -> all factor modules
+|       +-- base.py -> abc
+|       +-- past_results.py -> base
+|       +-- course_fit.py -> base
+|       +-- time_index.py -> base, re
+|       +-- last_3f.py -> base
+|       +-- popularity.py -> base
++-- config/
+    +-- __init__.py -> (empty)
+    +-- weights.py -> (standalone) FACTOR_WEIGHTS
 ```
 
 ## Data Flow
 
 ```
-1. CLI Command
-   │
-   ▼
-2. Scraper fetches HTML from netkeiba
-   │
-   ▼
-3. Scraper parses HTML → dict
-   │
-   ▼
+1. CLI Command (scrape/scrape-horses/analyze)
+   |
+   v
+2. Scraper fetches HTML from netkeiba (scrape/scrape-horses)
+   |
+   v
+3. Scraper parses HTML -> dict
+   |
+   v
 4. CLI creates Model instances
-   │
-   ▼
+   |
+   v
 5. DB session saves to SQLite
+   |
+   v (for analyze command)
+6. Analyzers read from DB -> calculate scores
 ```
 
 ## External Dependencies
@@ -92,6 +109,7 @@ keiba/
 |---------|-------------|-------------|
 | `keiba scrape` | Collect race data | --year, --month, --db, --jra-only |
 | `keiba scrape-horses` | Collect horse details | --db, --limit |
+| `keiba analyze` | Analyze races and show scores | --db, --date, --venue, --race |
 
 ### --jra-only Option
 
@@ -100,8 +118,8 @@ Uses course codes defined in `keiba/constants.py`:
 
 ```
 JRA Course Codes:
-01=札幌, 02=函館, 03=福島, 04=新潟, 05=東京
-06=中山, 07=中京, 08=京都, 09=阪神, 10=小倉
+01=Sapporo, 02=Hakodate, 03=Fukushima, 04=Niigata, 05=Tokyo
+06=Nakayama, 07=Chukyo, 08=Kyoto, 09=Hanshin, 10=Kokura
 ```
 
 Race ID format: `YYYYPPNNRRXX` where PP is the course code.

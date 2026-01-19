@@ -7,6 +7,16 @@
 - 指定した年月のレースデータを自動収集
 - SQLiteデータベースに保存
 - 既存データのスキップ（再実行可能）
+- 馬の詳細情報（血統等）の収集
+- レース分析機能（スコア算出）
+
+### 収集データ
+
+レース結果には以下の情報が含まれます：
+- 基本情報: 着順、枠番、馬番、タイム、着差
+- 馬情報: 性別、年齢、馬体重、馬体重増減
+- レース情報: 斤量、通過順位、上がり3F
+- オッズ情報: 単勝オッズ、人気
 
 ## 必要条件
 
@@ -77,6 +87,30 @@ keiba scrape --year 2024 --month 1 --db data/keiba.db
 keiba scrape-horses --db data/keiba.db --limit 500
 ```
 
+#### analyzeコマンド
+
+| オプション | 必須 | デフォルト | 説明 |
+|-----------|------|-----------|------|
+| --db      | Yes  | - | DBファイルパス |
+| --date    | Yes  | - | レース日付（YYYY-MM-DD） |
+| --venue   | Yes  | - | 競馬場名（例: 中山） |
+| --race    | No   | 全レース | レース番号 |
+
+```bash
+# 指定日・競馬場の全レースを分析
+keiba analyze --db data/keiba.db --date 2024-01-06 --venue 中山
+
+# 特定のレースのみ分析
+keiba analyze --db data/keiba.db --date 2024-01-06 --venue 中山 --race 11
+```
+
+分析結果は以下のスコアを算出します：
+- 過去成績（過去）: 直近レースの着順ベースのスコア
+- コース適性（適性）: 同一条件（芝/ダート、距離）での実績
+- タイム指数（タイム）: 過去のタイム実績
+- 上がり3F（上がり）: 末脚の評価
+- 人気（人気）: オッズ・人気順ベースのスコア
+
 ## データベース構造
 
 以下のテーブルが作成されます：
@@ -90,6 +124,34 @@ keiba scrape-horses --db data/keiba.db --limit 500
 | breeders | 生産者 |
 | races | レース |
 | race_results | レース結果 |
+
+### race_resultsテーブル詳細
+
+レース結果テーブルには以下のカラムが含まれます：
+
+| カラム | 型 | 説明 |
+|--------|------|------|
+| id | INTEGER | 自動採番ID（主キー） |
+| race_id | TEXT | レースID（外部キー） |
+| horse_id | TEXT | 馬ID（外部キー） |
+| jockey_id | TEXT | 騎手ID（外部キー） |
+| trainer_id | TEXT | 調教師ID（外部キー） |
+| finish_position | INTEGER | 着順（中止等は0） |
+| bracket_number | INTEGER | 枠番 |
+| horse_number | INTEGER | 馬番 |
+| odds | REAL | 単勝オッズ |
+| popularity | INTEGER | 人気 |
+| weight | INTEGER | 馬体重 |
+| weight_diff | INTEGER | 馬体重増減 |
+| time | TEXT | タイム |
+| margin | TEXT | 着差 |
+| last_3f | REAL | 上がり3F（秒） |
+| sex | TEXT | 性別（牡/牝/セ） |
+| age | INTEGER | 年齢 |
+| impost | REAL | 斤量 |
+| passing_order | TEXT | 通過順位（例: "2-1-1-1"） |
+| created_at | DATETIME | 作成日時 |
+| updated_at | DATETIME | 更新日時 |
 
 ## 開発
 

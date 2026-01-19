@@ -480,6 +480,57 @@ class TestRace:
         assert "202405020811" in repr_str
         assert "テストレース" in repr_str
 
+    def test_grade_column_exists(self):
+        """Raceにgradeカラムが存在する"""
+        race = Race(
+            id="202405020811",
+            name="有馬記念(G1)",
+            date=date(2024, 5, 2),
+            course="中山",
+            race_number=11,
+            distance=2500,
+            surface="芝",
+            grade="G1",
+        )
+        assert race.grade == "G1"
+
+    def test_grade_nullable(self, initialized_engine):
+        """gradeはNullableである"""
+        with get_session(initialized_engine) as session:
+            race = Race(
+                id="202405020811",
+                name="テストレース",
+                date=date(2024, 5, 2),
+                course="東京",
+                race_number=8,
+                distance=1600,
+                surface="芝",
+            )
+            session.add(race)
+            session.flush()
+            assert race.grade is None
+
+    def test_grade_save_and_retrieve(self, initialized_engine):
+        """gradeをDBに保存して取得できる"""
+        with get_session(initialized_engine) as session:
+            race = Race(
+                id="202405020811",
+                name="有馬記念(G1)",
+                date=date(2024, 5, 2),
+                course="中山",
+                race_number=11,
+                distance=2500,
+                surface="芝",
+                grade="G1",
+            )
+            session.add(race)
+
+        with get_session(initialized_engine) as session:
+            result = session.execute(
+                select(Race).where(Race.id == "202405020811")
+            ).scalar_one()
+            assert result.grade == "G1"
+
 
 class TestRaceResult:
     """RaceResultモデルのテスト"""
@@ -750,3 +801,195 @@ class TestRaceResult:
             # リレーションシップを通じてTrainerにアクセス
             assert result.trainer is not None
             assert result.trainer.name == "テスト調教師"
+
+    def test_last_3f_column_exists(self):
+        """RaceResultにlast_3fカラムが存在する"""
+        result = RaceResult(
+            race_id="202405020811",
+            horse_id="2019104308",
+            jockey_id="05203",
+            trainer_id="01084",
+            finish_position=1,
+            bracket_number=3,
+            horse_number=5,
+            odds=2.5,
+            popularity=1,
+            weight=480,
+            weight_diff=2,
+            time="1:33.5",
+            margin="アタマ",
+            last_3f=34.5,
+        )
+        assert result.last_3f == 34.5
+
+    def test_last_3f_nullable(self, setup_related_data):
+        """last_3fはNullableである"""
+        engine = setup_related_data
+        with get_session(engine) as session:
+            result = RaceResult(
+                race_id="202405020811",
+                horse_id="2019104308",
+                jockey_id="05203",
+                trainer_id="01084",
+                finish_position=1,
+                bracket_number=3,
+                horse_number=5,
+                odds=2.5,
+                popularity=1,
+                weight=480,
+                weight_diff=2,
+                time="1:33.5",
+                margin="アタマ",
+                # last_3fを指定しない
+            )
+            session.add(result)
+            session.flush()
+            assert result.last_3f is None
+
+    def test_last_3f_save_and_retrieve(self, setup_related_data):
+        """last_3fをDBに保存して取得できる"""
+        engine = setup_related_data
+        with get_session(engine) as session:
+            result = RaceResult(
+                race_id="202405020811",
+                horse_id="2019104308",
+                jockey_id="05203",
+                trainer_id="01084",
+                finish_position=1,
+                bracket_number=3,
+                horse_number=5,
+                odds=2.5,
+                popularity=1,
+                weight=480,
+                weight_diff=2,
+                time="1:33.5",
+                margin="アタマ",
+                last_3f=33.8,
+            )
+            session.add(result)
+            session.flush()
+            result_id = result.id
+
+        with get_session(engine) as session:
+            retrieved = session.execute(
+                select(RaceResult).where(RaceResult.id == result_id)
+            ).scalar_one()
+            assert retrieved.last_3f == 33.8
+
+    def test_sex_column_exists(self):
+        """RaceResultにsexカラムが存在する"""
+        result = RaceResult(
+            race_id="202405020811",
+            horse_id="2019104308",
+            jockey_id="05203",
+            trainer_id="01084",
+            finish_position=1,
+            bracket_number=3,
+            horse_number=5,
+            time="1:33.5",
+            margin="アタマ",
+            sex="牡",
+        )
+        assert result.sex == "牡"
+
+    def test_age_column_exists(self):
+        """RaceResultにageカラムが存在する"""
+        result = RaceResult(
+            race_id="202405020811",
+            horse_id="2019104308",
+            jockey_id="05203",
+            trainer_id="01084",
+            finish_position=1,
+            bracket_number=3,
+            horse_number=5,
+            time="1:33.5",
+            margin="アタマ",
+            age=5,
+        )
+        assert result.age == 5
+
+    def test_impost_column_exists(self):
+        """RaceResultにimpostカラムが存在する"""
+        result = RaceResult(
+            race_id="202405020811",
+            horse_id="2019104308",
+            jockey_id="05203",
+            trainer_id="01084",
+            finish_position=1,
+            bracket_number=3,
+            horse_number=5,
+            time="1:33.5",
+            margin="アタマ",
+            impost=57.0,
+        )
+        assert result.impost == 57.0
+
+    def test_passing_order_column_exists(self):
+        """RaceResultにpassing_orderカラムが存在する"""
+        result = RaceResult(
+            race_id="202405020811",
+            horse_id="2019104308",
+            jockey_id="05203",
+            trainer_id="01084",
+            finish_position=1,
+            bracket_number=3,
+            horse_number=5,
+            time="1:33.5",
+            margin="アタマ",
+            passing_order="5-5-4-3",
+        )
+        assert result.passing_order == "5-5-4-3"
+
+    def test_new_columns_nullable(self, setup_related_data):
+        """sex, age, impost, passing_orderはNullableである"""
+        engine = setup_related_data
+        with get_session(engine) as session:
+            result = RaceResult(
+                race_id="202405020811",
+                horse_id="2019104308",
+                jockey_id="05203",
+                trainer_id="01084",
+                finish_position=1,
+                bracket_number=3,
+                horse_number=5,
+                time="1:33.5",
+                margin="アタマ",
+            )
+            session.add(result)
+            session.flush()
+            assert result.sex is None
+            assert result.age is None
+            assert result.impost is None
+            assert result.passing_order is None
+
+    def test_new_columns_save_and_retrieve(self, setup_related_data):
+        """sex, age, impost, passing_orderをDBに保存して取得できる"""
+        engine = setup_related_data
+        with get_session(engine) as session:
+            result = RaceResult(
+                race_id="202405020811",
+                horse_id="2019104308",
+                jockey_id="05203",
+                trainer_id="01084",
+                finish_position=1,
+                bracket_number=3,
+                horse_number=5,
+                time="1:33.5",
+                margin="アタマ",
+                sex="牝",
+                age=4,
+                impost=55.0,
+                passing_order="2-2-1-1",
+            )
+            session.add(result)
+            session.flush()
+            result_id = result.id
+
+        with get_session(engine) as session:
+            retrieved = session.execute(
+                select(RaceResult).where(RaceResult.id == result_id)
+            ).scalar_one()
+            assert retrieved.sex == "牝"
+            assert retrieved.age == 4
+            assert retrieved.impost == 55.0
+            assert retrieved.passing_order == "2-2-1-1"
