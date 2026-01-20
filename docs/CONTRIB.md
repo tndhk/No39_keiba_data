@@ -36,12 +36,17 @@ keiba/
 ├── scrapers/     # Webスクレイパー
 ├── analyzers/    # レース分析モジュール
 │   └── factors/  # スコア算出ファクター（7因子）
+├── ml/           # 機械学習予測モジュール
+│   ├── feature_builder.py  # 特徴量構築
+│   ├── trainer.py          # LightGBMモデル学習
+│   └── predictor.py        # 予測実行
 ├── config/       # 設定（分析ウェイト、血統マスタ等）
 ├── utils/        # ユーティリティ（グレード抽出等）
 ├── db.py         # データベース接続
 └── cli.py        # CLIエントリーポイント
 tests/
 ├── fixtures/     # テスト用HTMLフィクスチャ
+├── ml/           # ML関連テスト
 └── test_*.py     # テストファイル
 ```
 
@@ -87,14 +92,17 @@ keiba scrape-horses --db data/keiba.db --limit 500
 
 ### keiba analyze
 
-指定した日付・競馬場のレースを分析してスコアを表示。
+指定した日付・競馬場のレースを分析してスコアを表示。LightGBMによるML予測付き。
 
 ```bash
-# 指定日・競馬場の全レースを分析
+# 指定日・競馬場の全レースを分析（ML予測付き）
 keiba analyze --db data/keiba.db --date 2024-01-06 --venue 中山
 
 # 特定のレースのみ分析
 keiba analyze --db data/keiba.db --date 2024-01-06 --venue 中山 --race 11
+
+# ML予測なしで分析（従来の動作）
+keiba analyze --db data/keiba.db --date 2024-01-06 --venue 中山 --no-predict
 ```
 
 | オプション | 必須 | デフォルト | 説明 |
@@ -103,6 +111,10 @@ keiba analyze --db data/keiba.db --date 2024-01-06 --venue 中山 --race 11
 | --date | Yes | - | レース日付（YYYY-MM-DD） |
 | --venue | Yes | - | 競馬場名（例: 中山） |
 | --race | No | 全レース | レース番号 |
+| --no-predict | No | False | ML予測をスキップ |
+
+ML予測は対象日より前のレースデータで学習を行い、各馬の「3着以内に入る確率」を予測。
+学習データが100件未満の場合は自動的にスキップ。
 
 ### keiba migrate-grades
 
@@ -174,6 +186,8 @@ keiba migrate-grades --db data/keiba.db
 | beautifulsoup4 | >=4.11 | HTMLパース |
 | lxml | >=4.9 | HTMLパーサー |
 | click | >=8.0 | CLI構築 |
+| lightgbm | >=4.0.0 | 勾配ブースティング（ML予測） |
+| scikit-learn | >=1.3.0 | 機械学習ユーティリティ |
 
 ### 開発依存
 
@@ -200,8 +214,11 @@ pytest tests/test_scrapers.py -v
 # 特定のテストクラスのみ
 pytest tests/test_scrapers.py::TestHorseDetailScraperParse -v
 
-# 新因子関連のテスト
+# 分析因子関連のテスト
 pytest tests/test_pedigree_factor.py tests/test_running_style_factor.py -v
+
+# ML関連のテスト
+pytest tests/ml/ -v
 ```
 
 カバレッジ目標: 80%以上
@@ -227,7 +244,14 @@ pytest tests/test_pedigree_factor.py tests/test_running_style_factor.py -v
 5. 必要に応じてマスタデータを `keiba/config/` に追加
 6. テストを `tests/test_<factor_name>_factor.py` に追加
 
-### 3. テストの書き方
+### 3. ML特徴量の追加
+
+1. `keiba/ml/feature_builder.py` の `_get_feature_config()` に特徴量を追加
+2. `build_features()` で新しい特徴量の値を計算
+3. テストを `tests/ml/test_feature_builder.py` に追加
+4. 必要に応じて `cli.py` の `_build_training_data()` を更新
+
+### 4. テストの書き方
 
 ```python
 # tests/fixtures/ にHTMLフィクスチャを追加
@@ -243,7 +267,7 @@ def test_my_scraper(self, mock_fetch, my_fixture_html):
     # テスト実装
 ```
 
-### 4. データベースマイグレーション
+### 5. データベースマイグレーション
 
 モデルにカラムを追加した場合、既存DBには以下でカラムを追加:
 

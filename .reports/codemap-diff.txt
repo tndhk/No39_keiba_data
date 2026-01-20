@@ -1,48 +1,35 @@
-# Codemap Update Report
-Date: 2026-01-20
+# Codemap Diff Report
+Generated: 2026-01-20T23:00:00+09:00
 
 ## Summary
-Updated codemaps to reflect new analysis factors (pedigree, running_style).
+- Total codemaps: 2
+- Changed codemaps: 2 (NEW)
+- Diff percentage: 100% (Initial creation)
 
-## Changes by File
+## Changes
 
-### codemaps/architecture.md
-- Lines added: 26
-- Lines removed: 10
-- Change ratio: ~29%
-- Key changes:
-  - Added 2 new factor modules (pedigree.py, running_style.py)
-  - Added pedigree_master.py to config module
-  - Updated factors from 5 to 7
-  - Added Analysis Factors table with weights
-  - Updated data flow to include step 7
+### docs/CODEMAPS/architecture.md
+Status: NEW
+Lines: 87
+Content:
+- System overview with directory structure
+- Module dependencies
+- Data flow diagram
+- CLI commands table
+- External dependencies
 
-### codemaps/backend.md
-- Lines added: 78
-- Lines removed: 13
-- Change ratio: ~47%
-- Key changes:
-  - Added PedigreeFactor section with methods and score calculation
-  - Added RunningStyleFactor section with classification logic
-  - Added pedigree_master.py section (8 sire lines)
-  - Updated weights from 5-factor to 7-factor distribution
-  - Updated class hierarchy diagram
-  - Added error handling details for new factors
+### docs/CODEMAPS/data.md
+Status: NEW
+Lines: 180
+Content:
+- ER diagram (7 tables)
+- Table details (races, horses, race_results)
+- Indexes
+- ML feature schema (19 features)
+- Factor weights configuration
 
-### codemaps/data.md
-- Lines added: 1
-- Lines removed: 1
-- Change ratio: ~1%
-- Key changes:
-  - Freshness timestamp updated only (no model changes)
-
-## Overall Statistics
-- Total lines added: 109
-- Total lines removed: 20
-- Net change: +89 lines
-- Largest change: backend.md (~47%)
-
-## Verification
-- Verified against actual source files
-- All module dependencies checked
-- All new factors documented with methods and logic
+## Notes
+- Initial codemap generation
+- No previous version to compare
+- Frontend codemap not applicable (Python CLI project)
+- Backend codemap merged into architecture.md
