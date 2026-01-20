@@ -35,8 +35,8 @@ keiba/
 ├── models/       # SQLAlchemyモデル定義
 ├── scrapers/     # Webスクレイパー
 ├── analyzers/    # レース分析モジュール
-│   └── factors/  # スコア算出ファクター
-├── config/       # 設定（分析ウェイト等）
+│   └── factors/  # スコア算出ファクター（7因子）
+├── config/       # 設定（分析ウェイト、血統マスタ等）
 ├── utils/        # ユーティリティ（グレード抽出等）
 ├── db.py         # データベース接続
 └── cli.py        # CLIエントリーポイント
@@ -104,12 +104,64 @@ keiba analyze --db data/keiba.db --date 2024-01-06 --venue 中山 --race 11
 | --venue | Yes | - | 競馬場名（例: 中山） |
 | --race | No | 全レース | レース番号 |
 
-分析ファクター:
-- 過去成績: 直近レースの着順ベースのスコア
-- コース適性: 同一条件（芝/ダート、距離）での実績
-- タイム指数: 過去のタイム実績
-- 上がり3F: 末脚の評価
-- 人気: オッズ・人気順ベースのスコア
+### keiba migrate-grades
+
+既存レースにグレード情報を追加するマイグレーションコマンド。
+
+```bash
+keiba migrate-grades --db data/keiba.db
+```
+
+| オプション | 必須 | デフォルト | 説明 |
+|-----------|------|-----------|------|
+| --db | Yes | - | DBファイルパス |
+
+## 分析ファクター
+
+現在7因子で構成され、各因子均等（約14.3%）の重み配分。
+
+| 因子 | 説明 | 重み |
+|------|------|------|
+| past_results | 直近レースの着順ベースのスコア | 14.3% |
+| course_fit | 同一条件（芝/ダート、距離）での実績 | 14.3% |
+| time_index | 過去のタイム実績 | 14.3% |
+| last_3f | 末脚の評価（上がり3F） | 14.3% |
+| popularity | オッズ・人気順ベースのスコア | 14.3% |
+| pedigree | 血統分析（父・母父系統の距離・馬場適性） | 14.3% |
+| running_style | 脚質分析（脚質傾向とコース有利脚質のマッチ度） | 14.2% |
+
+### 血統分析（PedigreeFactor）
+
+8系統に分類して距離・馬場適性を評価。
+
+| 系統 | 主な種牡馬例 |
+|------|-------------|
+| sunday_silence | サンデーサイレンス、ディープインパクト、ステイゴールド |
+| kingmambo | キングマンボ、キングカメハメハ、ロードカナロア |
+| northern_dancer | ノーザンダンサー、サドラーズウェルズ、フランケル |
+| mr_prospector | ミスタープロスペクター、フォーティナイナー |
+| roberto | ロベルト、ブライアンズタイム、モーリス |
+| storm_cat | ストームキャット、ヘネシー |
+| hail_to_reason | ヘイルトゥリーズン、リアルシャダイ |
+| other | 上記に該当しない場合 |
+
+- 距離適性: sprint（〜1400m）、mile（1400-1800m）、middle（1800-2200m）、long（2200m〜）
+- 馬場適性: good（良/稍重）、heavy（重/不良）
+- 父:母父 = 7:3 の重み付け
+
+### 脚質分析（RunningStyleFactor）
+
+4分類で脚質を判定し、コース有利脚質とのマッチ度を計算。
+
+| 脚質 | 判定基準（1コーナー通過順位/出走頭数） |
+|------|--------------------------------------|
+| escape（逃げ） | 〜15% |
+| front（先行） | 15%〜40% |
+| stalker（差し） | 40%〜70% |
+| closer（追込） | 70%〜 |
+
+- 過去5走の脚質から最頻出の脚質を傾向として判定
+- コース別有利脚質統計とのマッチ度をスコア化
 
 ## 依存関係
 
@@ -147,7 +199,12 @@ pytest tests/test_scrapers.py -v
 
 # 特定のテストクラスのみ
 pytest tests/test_scrapers.py::TestHorseDetailScraperParse -v
+
+# 新因子関連のテスト
+pytest tests/test_pedigree_factor.py tests/test_running_style_factor.py -v
 ```
+
+カバレッジ目標: 80%以上
 
 ## 開発ワークフロー
 
@@ -161,7 +218,16 @@ pytest tests/test_scrapers.py::TestHorseDetailScraperParse -v
 6. テストを `tests/` に追加
 7. 全テストがパスすることを確認
 
-### 2. テストの書き方
+### 2. 分析ファクターの追加
+
+1. `keiba/analyzers/factors/` に新しいファクタークラスを作成
+2. `BaseFactor` を継承し、`name` と `calculate()` を実装
+3. `keiba/analyzers/factors/__init__.py` でエクスポート
+4. `keiba/config/weights.py` に重みを追加（合計1.0）
+5. 必要に応じてマスタデータを `keiba/config/` に追加
+6. テストを `tests/test_<factor_name>_factor.py` に追加
+
+### 3. テストの書き方
 
 ```python
 # tests/fixtures/ にHTMLフィクスチャを追加
@@ -177,7 +243,7 @@ def test_my_scraper(self, mock_fetch, my_fixture_html):
     # テスト実装
 ```
 
-### 3. データベースマイグレーション
+### 4. データベースマイグレーション
 
 モデルにカラムを追加した場合、既存DBには以下でカラムを追加:
 

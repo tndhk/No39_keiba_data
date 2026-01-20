@@ -44,18 +44,26 @@ keiba analyze --db data/keiba.db --date 2024-01-06 --venue 中山 --race 11
 
 # 出力例
 # ==================================================
-# R11 第74回日刊スポ賞中山金杯(GIII)
-# 2024-01-06 中山 芝2000m
+# 2024-01-06 中山 11R 第74回日刊スポ賞中山金杯 芝2000m
 # ==================================================
-# 枠  馬  馬名                過去  適性  タイム  上がり  人気   合計
-# --------------------------------------------------
-#  1   1  ○○○○○○            8.5   7.2    6.8    7.5    6.0   36.0
-#  2   3  △△△△△△            7.2   8.0    7.5    6.8    7.5   37.0
+# 順位 | 馬番 |    馬名     |  総合  |  過去  |  適性  | タイム |  上がり |  人気
+# ----------------------------------------------------------------------------------
+#   1  |   1  |  ○○○○○○  |  80.5  |  78.2  |  82.0  |  79.5  |  81.0  |  82.0
 ```
+
+分析ファクター（7因子）:
+- 過去成績: 直近レースの着順ベースのスコア（14.3%）
+- コース適性: 同一条件（芝/ダート、距離）での実績（14.3%）
+- タイム指数: 過去のタイム実績（14.3%）
+- 上がり3F: 末脚の評価（14.3%）
+- 人気: オッズ・人気順ベースのスコア（14.3%）
+- 血統: 父・母父系統の距離・馬場適性（14.3%）
+- 脚質: 脚質傾向とコース有利脚質のマッチ度（14.2%）
 
 ### 馬詳細データの収集
 
 レース結果から取得した馬IDに基づき、馬の詳細情報（血統・成績）を収集。
+血統分析を行うには馬詳細データ（sire, dam_sire）が必要。
 
 ```bash
 # 基本コマンド（デフォルト100件）
@@ -78,6 +86,23 @@ keiba scrape-horses --db data/keiba.db --limit 500
 #   エラー: 2
 ```
 
+### グレード情報のマイグレーション
+
+既存レースにグレード情報（G1/G2/G3/L/OP等）を追加。
+
+```bash
+keiba migrate-grades --db data/keiba.db
+
+# 出力例
+# グレード情報マイグレーション開始
+# データベース: data/keiba.db
+# グレード未設定のレース: 1500件
+#   100件処理...
+#   200件処理...
+# 完了
+#   更新したレース: 1500件
+```
+
 ## 定期実行の設定
 
 ### crontabでの設定例
@@ -89,7 +114,7 @@ keiba scrape-horses --db data/keiba.db --limit 500
 # 毎月1日深夜2時に前月の全競馬場データを収集（NAR含む）
 # 0 2 1 * * cd /path/to/No39_keiba && keiba scrape --year $(date -d "last month" +\%Y) --month $(date -d "last month" +\%m) --db data/keiba.db >> logs/scrape.log 2>&1
 
-# 毎日深夜3時に馬詳細を100件ずつ収集
+# 毎日深夜3時に馬詳細を100件ずつ収集（血統分析に必要）
 0 3 * * * cd /path/to/No39_keiba && keiba scrape-horses --db data/keiba.db --limit 100 >> logs/horses.log 2>&1
 ```
 
@@ -106,16 +131,26 @@ sqlite3 data/keiba.db ".schema"
 | テーブル | 内容 |
 |---------|------|
 | races | レース情報 |
-| horses | 馬情報 |
+| horses | 馬情報（血統含む） |
 | jockeys | 騎手情報 |
 | trainers | 調教師情報 |
-| race_results | レース結果 |
+| race_results | レース結果（通過順位含む） |
 | owners | 馬主情報 |
 | breeders | 生産者情報 |
 
+### horsesテーブルの血統関連カラム
+
+血統分析（PedigreeFactor）に必要なカラム:
+
+| カラム | 型 | 説明 |
+|--------|------|------|
+| sire | TEXT | 父名 |
+| dam | TEXT | 母名 |
+| dam_sire | TEXT | 母父名 |
+
 ### race_resultsテーブルの拡張カラム
 
-最新バージョンでは以下のカラムが追加されています:
+脚質分析（RunningStyleFactor）に必要なカラム:
 
 | カラム | 型 | 説明 |
 |--------|------|------|
@@ -141,6 +176,16 @@ SELECT 'horses', COUNT(*) FROM horses
 UNION ALL
 SELECT 'race_results', COUNT(*) FROM race_results;
 "
+```
+
+### 血統データ取得状況の確認
+
+```bash
+# 血統情報が取得済みの馬の数
+sqlite3 data/keiba.db "SELECT COUNT(*) FROM horses WHERE sire IS NOT NULL;"
+
+# 血統情報が未取得の馬の数
+sqlite3 data/keiba.db "SELECT COUNT(*) FROM horses WHERE sire IS NULL;"
 ```
 
 ### バックアップ
@@ -175,6 +220,11 @@ sqlite3 data/keiba.db "ALTER TABLE race_results ADD COLUMN sex TEXT;"
 sqlite3 data/keiba.db "ALTER TABLE race_results ADD COLUMN age INTEGER;"
 sqlite3 data/keiba.db "ALTER TABLE race_results ADD COLUMN impost REAL;"
 sqlite3 data/keiba.db "ALTER TABLE race_results ADD COLUMN passing_order TEXT;"
+
+# horsesテーブルに血統カラムを追加
+sqlite3 data/keiba.db "ALTER TABLE horses ADD COLUMN sire TEXT;"
+sqlite3 data/keiba.db "ALTER TABLE horses ADD COLUMN dam TEXT;"
+sqlite3 data/keiba.db "ALTER TABLE horses ADD COLUMN dam_sire TEXT;"
 ```
 
 解決方法2: DBを削除して再作成（データが少ない場合）
@@ -183,7 +233,27 @@ rm data/keiba.db
 keiba scrape --year 2024 --month 1 --db data/keiba.db --jra-only
 ```
 
-### 2. HTTPエラー (403/429)
+### 2. 血統分析でNoneが返る
+
+症状: 血統分析のスコアがNoneになる
+
+原因: 馬の血統情報（sire）が未取得
+
+解決:
+```bash
+# 馬詳細データを収集
+keiba scrape-horses --db data/keiba.db --limit 500
+```
+
+### 3. 脚質分析でNoneが返る
+
+症状: 脚質分析のスコアがNoneになる
+
+原因: 過去のレース結果にpassing_orderが含まれていない
+
+解決: passing_orderはレース詳細取得時に自動保存される。古いデータの場合は再取得が必要。
+
+### 4. HTTPエラー (403/429)
 
 症状:
 ```
@@ -196,7 +266,7 @@ requests.exceptions.HTTPError: 403 Client Error: Forbidden
 - スクレイパーのdelayを増やす（デフォルト1秒）
 - 時間をおいて再実行
 
-### 3. パースエラー
+### 5. パースエラー
 
 症状:
 ```
@@ -209,7 +279,7 @@ AttributeError: 'NoneType' object has no attribute 'get_text'
 - `keiba/scrapers/` のパース処理を確認・修正
 - テストフィクスチャを最新のHTMLで更新
 
-### 4. 文字化け
+### 6. 文字化け
 
 症状: 馬名やレース名が文字化け
 
@@ -231,11 +301,13 @@ AttributeError: 'NoneType' object has no attribute 'get_text'
 
 - [ ] 詳細未取得の馬の残数
 - [ ] バックアップが正常に取れているか
+- [ ] 血統情報の取得進捗
 
 ### 月次確認
 
 - [ ] データの整合性チェック
 - [ ] 不要データのクリーンアップ
+- [ ] 分析結果の妥当性確認
 
 ## ロールバック手順
 

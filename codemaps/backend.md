@@ -1,6 +1,6 @@
 # Backend Codemap
 
-> Freshness: 2026-01-19 (Verified against codebase)
+> Freshness: 2026-01-20 (Verified against codebase)
 
 ## CLI Module (keiba/cli.py)
 
@@ -9,8 +9,9 @@
 | Command | Options | Description |
 |---------|---------|-------------|
 | `scrape` | --year, --month, --db, --jra-only | Collect race data for specified month |
-| `scrape-horses` | --db, --limit | Collect horse details |
+| `scrape-horses` | --db, --limit | Collect horse details (incl. pedigree) |
 | `analyze` | --db, --date, --venue, --race | Analyze races and display scores |
+| `migrate-grades` | --db | Add grade info to existing races |
 
 ### --jra-only Flag
 
@@ -34,7 +35,7 @@ keiba analyze --db data/keiba.db --date 2024-01-01 --venue Nakayama --race 11
 | `extract_race_id_from_url(url)` | Extract race ID from netkeiba URL |
 | `parse_race_date(date_str)` | Parse Japanese date string |
 | `_save_race_data(session, data)` | Save race + results to DB (includes sex, age, impost, passing_order) |
-| `_update_horse(session, horse, data)` | Update horse record with scraped data |
+| `_update_horse(session, horse, data)` | Update horse record with scraped data (incl. pedigree) |
 | `_analyze_race(session, race)` | Analyze single race and display scores |
 | `_get_horse_past_results(session, horse_id)` | Fetch horse past results for analysis |
 | `_print_score_table(scores)` | Display formatted score table |
@@ -119,7 +120,7 @@ Column Parsing (db.netkeiba.com format):
 |--------|---------|
 | `fetch_horse_detail(horse_id)` | dict - all horse info |
 | `_parse_profile(soup)` | dict - basic info |
-| `_parse_pedigree(soup)` | dict - bloodline |
+| `_parse_pedigree(soup)` | dict - bloodline (sire, dam, dam_sire) |
 | `_parse_career(soup)` | dict - race stats |
 
 URL Pattern: `https://db.netkeiba.com/horse/{horse_id}/`
@@ -143,6 +144,8 @@ BaseFactor (ABC)
 +-- TimeIndexFactor
 +-- Last3FFactor
 +-- PopularityFactor
++-- PedigreeFactor      # NEW
++-- RunningStyleFactor  # NEW
 
 ScoreCalculator
 ```
@@ -154,7 +157,7 @@ ScoreCalculator
 | `name` | str | Factor identifier |
 | `calculate(horse_id, race_results, **kwargs)` | float or None | Abstract: compute score (0-100) |
 
-### Factor Implementations
+### Factor Implementations (7 Factors)
 
 | Factor | Purpose | Score Logic |
 |--------|---------|-------------|
@@ -163,6 +166,39 @@ ScoreCalculator
 | TimeIndexFactor | Time performance | Comparison to average time (same conditions) |
 | Last3FFactor | Final stretch speed | Linear scale: 33s=100, 38s=0 |
 | PopularityFactor | Market evaluation | Based on odds or popularity rank |
+| PedigreeFactor | Bloodline aptitude | Distance/track aptitude from sire line (NEW) |
+| RunningStyleFactor | Running style match | Style tendency vs course win rate (NEW) |
+
+### PedigreeFactor (keiba/analyzers/factors/pedigree.py) - NEW
+
+| Method | Purpose |
+|--------|---------|
+| `_get_distance_band(distance)` | Classify: sprint/mile/middle/long |
+| `_get_track_type(condition)` | Classify: good/heavy |
+| `calculate(horse_id, race_results, **kwargs)` | Bloodline aptitude score |
+
+Required kwargs: `sire`, `dam_sire`, `distance`, `track_condition`
+
+Score calculation:
+- Sire line aptitude (70%) + Dam-sire line aptitude (30%)
+- Distance aptitude + Track aptitude averaged
+- Result: 0-100 score
+
+### RunningStyleFactor (keiba/analyzers/factors/running_style.py) - NEW
+
+| Method | Purpose |
+|--------|---------|
+| `_classify_running_style(passing_order, total_horses)` | Classify: escape/front/stalker/closer |
+| `_get_horse_tendency(horse_id, race_results)` | Most common style from last 5 races |
+| `calculate(horse_id, race_results, **kwargs)` | Style match score |
+
+Running style classification (1st corner position / total horses):
+- escape: <= 15%
+- front: 15-40%
+- stalker: 40-70%
+- closer: > 70%
+
+Optional kwargs: `course_stats` (default win rates used if not provided)
 
 ### ScoreCalculator (keiba/analyzers/score_calculator.py)
 
@@ -178,14 +214,43 @@ ScoreCalculator
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
-| `FACTOR_WEIGHTS` | dict | Weight distribution for factors |
+| `FACTOR_WEIGHTS` | dict | Weight distribution for 7 factors |
 
-Default weights:
-- past_results: 0.25 (25%)
-- course_fit: 0.20 (20%)
-- time_index: 0.20 (20%)
-- last_3f: 0.20 (20%)
-- popularity: 0.15 (15%)
+Current weights (7 factors, equal distribution):
+- past_results: 0.143 (14.3%)
+- course_fit: 0.143 (14.3%)
+- time_index: 0.143 (14.3%)
+- last_3f: 0.143 (14.3%)
+- popularity: 0.143 (14.3%)
+- pedigree: 0.143 (14.3%)
+- running_style: 0.142 (14.2%)
+
+### pedigree_master.py - NEW
+
+| Constant/Function | Purpose |
+|-------------------|---------|
+| `SIRE_LINE_MAPPING` | dict[str, str] - Maps 52 sire names to 8 lines |
+| `LINE_APTITUDE` | dict - Distance/track aptitude per line |
+| `get_sire_line(sire_name)` | Get line name (returns "other" if unknown) |
+| `get_line_aptitude(line)` | Get aptitude dict for line |
+
+8 Sire Lines:
+- sunday_silence: Middle distance, good track
+- kingmambo: Mile, versatile track
+- northern_dancer: Middle-long, heavy track
+- mr_prospector: Sprint, heavy track
+- roberto: Middle, heavy track
+- storm_cat: Sprint, good track
+- hail_to_reason: Long distance
+- other: Balanced defaults
+
+## Utils Module (keiba/utils/)
+
+### grade_extractor.py
+
+| Function | Purpose |
+|----------|---------|
+| `extract_grade(race_name)` | Extract grade (G1/G2/G3/L/OP/etc) from race name |
 
 ## Error Handling
 
@@ -193,3 +258,5 @@ Default weights:
 - Parse errors: Returns partial data / None values
 - DB errors: SQLAlchemy exceptions propagate
 - Factor calculation: Returns None on insufficient data
+  - PedigreeFactor: None if sire is None or distance is None
+  - RunningStyleFactor: None if no passing_order data in history

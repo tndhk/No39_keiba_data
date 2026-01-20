@@ -1,6 +1,6 @@
 # Architecture Codemap
 
-> Freshness: 2026-01-19 (Verified against codebase)
+> Freshness: 2026-01-20 (Verified against codebase)
 
 ## System Overview
 
@@ -30,7 +30,7 @@
 keiba/
 +-- __init__.py     -> (empty)
 +-- __main__.py     -> cli
-+-- cli.py          -> models, scrapers, db, analyzers
++-- cli.py          -> models, scrapers, db, analyzers, utils
 +-- constants.py    -> (standalone) JRA_COURSE_CODES
 +-- db.py           -> models.base (Base)
 +-- models/
@@ -53,22 +53,28 @@ keiba/
 |   +-- __init__.py -> score_calculator
 |   +-- score_calculator.py -> config.weights
 |   +-- factors/
-|       +-- __init__.py -> all factor modules
+|       +-- __init__.py -> all factor modules (7 factors)
 |       +-- base.py -> abc
 |       +-- past_results.py -> base
 |       +-- course_fit.py -> base
 |       +-- time_index.py -> base, re
 |       +-- last_3f.py -> base
 |       +-- popularity.py -> base
+|       +-- pedigree.py -> base, config.pedigree_master  # NEW
+|       +-- running_style.py -> base, collections        # NEW
 +-- config/
+|   +-- __init__.py -> (empty)
+|   +-- weights.py -> (standalone) FACTOR_WEIGHTS (7 factors)
+|   +-- pedigree_master.py -> (standalone) SIRE_LINE_MAPPING, LINE_APTITUDE  # NEW
++-- utils/
     +-- __init__.py -> (empty)
-    +-- weights.py -> (standalone) FACTOR_WEIGHTS
+    +-- grade_extractor.py -> re
 ```
 
 ## Data Flow
 
 ```
-1. CLI Command (scrape/scrape-horses/analyze)
+1. CLI Command (scrape/scrape-horses/analyze/migrate-grades)
    |
    v
 2. Scraper fetches HTML from netkeiba (scrape/scrape-horses)
@@ -83,7 +89,10 @@ keiba/
 5. DB session saves to SQLite
    |
    v (for analyze command)
-6. Analyzers read from DB -> calculate scores
+6. Analyzers read from DB -> calculate scores (7 factors)
+   |
+   v
+7. Scores aggregated by ScoreCalculator -> weighted total
 ```
 
 ## External Dependencies
@@ -108,8 +117,9 @@ keiba/
 | Command | Description | Key Options |
 |---------|-------------|-------------|
 | `keiba scrape` | Collect race data | --year, --month, --db, --jra-only |
-| `keiba scrape-horses` | Collect horse details | --db, --limit |
+| `keiba scrape-horses` | Collect horse details (with pedigree) | --db, --limit |
 | `keiba analyze` | Analyze races and show scores | --db, --date, --venue, --race |
+| `keiba migrate-grades` | Add grade info to existing races | --db |
 
 ### --jra-only Option
 
@@ -123,3 +133,15 @@ JRA Course Codes:
 ```
 
 Race ID format: `YYYYPPNNRRXX` where PP is the course code.
+
+## Analysis Factors (7 Total)
+
+| Factor | Weight | Purpose |
+|--------|--------|---------|
+| past_results | 14.3% | Recent race performance |
+| course_fit | 14.3% | Course/distance suitability |
+| time_index | 14.3% | Time performance |
+| last_3f | 14.3% | Final stretch speed |
+| popularity | 14.3% | Market evaluation |
+| pedigree | 14.3% | Bloodline aptitude (NEW) |
+| running_style | 14.2% | Running style match (NEW) |

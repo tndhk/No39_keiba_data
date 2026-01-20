@@ -1,6 +1,6 @@
 # Data Models Codemap
 
-> Freshness: 2026-01-19 (Verified against codebase)
+> Freshness: 2026-01-20 (Verified against codebase)
 
 ## Entity Relationship
 
