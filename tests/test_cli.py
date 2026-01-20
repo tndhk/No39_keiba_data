@@ -773,3 +773,51 @@ class TestScrapeDataSavingWithGrade:
             if hasattr(obj, "grade"):
                 # Raceモデルのgradeは設定されているはず
                 assert hasattr(obj, "grade")
+
+
+# ============================================================================
+# ML予測テスト用のFixtureとテストクラス
+# ============================================================================
+
+
+@pytest.fixture
+def runner():
+    """CLIテスト用のClickランナー"""
+    return CliRunner()
+
+
+@pytest.fixture
+def sample_db(tmp_path):
+    """テスト用のサンプルデータベースパス"""
+    return str(tmp_path / "test_keiba.db")
+
+
+class TestAnalyzeWithML:
+    """analyzeコマンドのML予測テスト"""
+
+    def test_analyze_with_prediction_shows_ml_header(self, runner, sample_db):
+        """ML予測ヘッダーが表示されるテスト"""
+        result = runner.invoke(
+            main,
+            ["analyze", "--db", sample_db, "--date", "2024-01-06", "--venue", "中山"],
+        )
+        # ML予測ヘッダーが含まれる
+        assert "【ML予測】" in result.output or "学習データ" in result.output
+
+    def test_analyze_with_no_predict_flag(self, runner, sample_db):
+        """--no-predictフラグでML予測をスキップ"""
+        result = runner.invoke(
+            main,
+            ["analyze", "--db", sample_db, "--date", "2024-01-06", "--venue", "中山", "--no-predict"],
+        )
+        # ML予測ヘッダーが含まれない
+        assert "【ML予測】" not in result.output
+
+    def test_analyze_shows_probability_column(self, runner, sample_db):
+        """確率列が表示されるテスト"""
+        result = runner.invoke(
+            main,
+            ["analyze", "--db", sample_db, "--date", "2024-01-06", "--venue", "中山"],
+        )
+        # 確率列のヘッダーが含まれる
+        assert "3着内確率" in result.output or "確率" in result.output
