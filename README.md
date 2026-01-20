@@ -95,6 +95,7 @@ keiba scrape-horses --db data/keiba.db --limit 500
 | --date    | Yes  | - | レース日付（YYYY-MM-DD） |
 | --venue   | Yes  | - | 競馬場名（例: 中山） |
 | --race    | No   | 全レース | レース番号 |
+| --no-predict | No | False | ML予測を無効化 |
 
 ```bash
 # 指定日・競馬場の全レースを分析
@@ -103,6 +104,23 @@ keiba analyze --db data/keiba.db --date 2024-01-06 --venue 中山
 # 特定のレースのみ分析
 keiba analyze --db data/keiba.db --date 2024-01-06 --venue 中山 --race 11
 ```
+
+#### レース分析（ML予測付き）
+
+```bash
+# ML予測付きでレース分析
+keiba analyze --db keiba.db --date 2024-01-06 --venue 中山
+
+# ML予測なしで分析（従来の動作）
+keiba analyze --db keiba.db --date 2024-01-06 --venue 中山 --no-predict
+```
+
+ML予測機能は、過去のレース結果を学習データとしてLightGBMモデルを構築し、
+各馬の「3着以内に入る確率」を予測します。
+
+**必要条件:**
+- 対象レース日より前に100レース以上のデータが必要
+- データが不足している場合はML予測がスキップされます
 
 分析結果は以下のスコアを算出します：
 - 過去成績（過去）: 直近レースの着順ベースのスコア
