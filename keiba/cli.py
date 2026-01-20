@@ -331,20 +331,27 @@ def _update_horse(session, horse: Horse, horse_data: dict) -> None:
 @click.option("--date", required=True, type=str, help="レース日付（YYYY-MM-DD）")
 @click.option("--venue", required=True, type=str, help="競馬場名（例: 中山）")
 @click.option("--race", type=int, default=None, help="レース番号（省略時は全レース）")
-def analyze(db: str, date: str, venue: str, race: int | None):
+@click.option("--no-predict", is_flag=True, default=False, help="ML予測をスキップ")
+def analyze(db: str, date: str, venue: str, race: int | None, no_predict: bool):
     """指定した日付・競馬場のレースを分析してスコアを表示"""
     from datetime import datetime as dt
 
+    import numpy as np
     from sqlalchemy import select
 
     from keiba.analyzers.factors import (
         CourseFitFactor,
         Last3FFactor,
         PastResultsFactor,
+        PedigreeFactor,
         PopularityFactor,
+        RunningStyleFactor,
         TimeIndexFactor,
     )
     from keiba.analyzers.score_calculator import ScoreCalculator
+    from keiba.ml.feature_builder import FeatureBuilder
+    from keiba.ml.predictor import Predictor
+    from keiba.ml.trainer import Trainer
 
     # 日付をパース
     try:
@@ -355,12 +362,48 @@ def analyze(db: str, date: str, venue: str, race: int | None):
 
     click.echo(f"分析開始: {race_date} {venue}")
     click.echo(f"データベース: {db}")
-    click.echo("")
 
     # DBに接続
     engine = get_engine(db)
 
     with get_session(engine) as session:
+        # ML予測の準備（--no-predictでない場合）
+        predictor = None
+        training_count = 0
+
+        if not no_predict:
+            click.echo("")
+            click.echo("ML予測モデルを学習中...")
+
+            features_list, labels = _build_training_data(session, race_date)
+            training_count = len(features_list)
+
+            if training_count >= 100:
+                feature_builder = FeatureBuilder()
+                feature_names = feature_builder.get_feature_names()
+
+                X = np.array([[f[name] for name in feature_names] for f in features_list])
+                y = np.array(labels)
+
+                trainer = Trainer()
+                metrics = trainer.train_with_cv(X, y, n_splits=5)
+
+                click.echo(f"学習完了: {training_count}サンプル")
+                if metrics['precision_at_1']:
+                    click.echo(f"  Precision@1: {metrics['precision_at_1']:.1%}")
+                else:
+                    click.echo("  Precision@1: N/A")
+                if metrics['precision_at_3']:
+                    click.echo(f"  Precision@3: {metrics['precision_at_3']:.1%}")
+                else:
+                    click.echo("  Precision@3: N/A")
+
+                predictor = Predictor(trainer.model)
+            else:
+                click.echo(f"学習データ不足（{training_count}サンプル）: ML予測をスキップ")
+
+        click.echo("")
+
         # 対象レースを取得
         stmt = select(Race).where(Race.date == race_date, Race.course == venue)
         if race is not None:
@@ -375,7 +418,7 @@ def analyze(db: str, date: str, venue: str, race: int | None):
 
         # 各レースを分析
         for target_race in races:
-            _analyze_race(session, target_race)
+            _analyze_race_with_ml(session, target_race, predictor, training_count)
 
 
 def _analyze_race(session, race: Race) -> None:
@@ -718,6 +761,220 @@ def _print_score_table(scores: list[dict]) -> None:
             f"{rank:^4} | {score['horse_number']:^4} | {horse_name:^12} | "
             f"{total:^6} | {past:^6} | {course:^6} | {time_idx:^6} | {last_3f:^6} | {pop:^6}"
         )
+
+
+def _analyze_race_with_ml(
+    session, race: Race, predictor, training_count: int
+) -> None:
+    """レースを分析してスコアとML予測を表示する
+
+    Args:
+        session: SQLAlchemyセッション
+        race: レースオブジェクト
+        predictor: Predictorインスタンス（Noneの場合はML予測スキップ）
+        training_count: 学習データ数
+    """
+    import numpy as np
+
+    from keiba.analyzers.factors import (
+        CourseFitFactor,
+        Last3FFactor,
+        PastResultsFactor,
+        PedigreeFactor,
+        PopularityFactor,
+        RunningStyleFactor,
+        TimeIndexFactor,
+    )
+    from keiba.analyzers.score_calculator import ScoreCalculator
+    from keiba.ml.feature_builder import FeatureBuilder
+
+    click.echo("=" * 80)
+    click.echo(f"{race.date} {race.course} {race.race_number}R {race.name} {race.surface}{race.distance}m")
+
+    if predictor:
+        click.echo(f"【ML予測】学習データ: {training_count:,}件")
+
+    click.echo("=" * 80)
+
+    # レース結果を取得
+    results = (
+        session.query(RaceResult)
+        .filter(RaceResult.race_id == race.id)
+        .all()
+    )
+
+    if not results:
+        click.echo("出走馬情報がありません")
+        click.echo("")
+        return
+
+    # 各馬のスコアを計算
+    calculator = ScoreCalculator()
+    factors = {
+        "past_results": PastResultsFactor(),
+        "course_fit": CourseFitFactor(),
+        "time_index": TimeIndexFactor(),
+        "last_3f": Last3FFactor(),
+        "popularity": PopularityFactor(),
+        "pedigree": PedigreeFactor(),
+        "running_style": RunningStyleFactor(),
+    }
+    feature_builder = FeatureBuilder()
+
+    scores = []
+    ml_features = []
+    horse_ids = []
+
+    for result in results:
+        # 過去成績を取得
+        past_results = _get_horse_past_results(session, result.horse_id)
+
+        # 馬情報を取得
+        horse = session.get(Horse, result.horse_id)
+
+        # 各Factorスコアを計算
+        factor_scores = {
+            "past_results": factors["past_results"].calculate(
+                result.horse_id, past_results
+            ),
+            "course_fit": factors["course_fit"].calculate(
+                result.horse_id,
+                past_results,
+                target_surface=race.surface,
+                target_distance=race.distance,
+            ),
+            "time_index": factors["time_index"].calculate(
+                result.horse_id,
+                past_results,
+                target_surface=race.surface,
+                target_distance=race.distance,
+            ),
+            "last_3f": factors["last_3f"].calculate(result.horse_id, past_results),
+            "popularity": factors["popularity"].calculate(
+                result.horse_id,
+                [],
+                odds=result.odds,
+                popularity=result.popularity,
+            ),
+            "pedigree": factors["pedigree"].calculate(
+                result.horse_id, [],
+                sire=horse.sire if horse else None,
+                dam_sire=horse.dam_sire if horse else None,
+                target_surface=race.surface,
+                target_distance=race.distance,
+            ),
+            "running_style": factors["running_style"].calculate(
+                result.horse_id, past_results,
+                passing_order=result.passing_order,
+                course=race.course,
+                distance=race.distance,
+            ),
+        }
+
+        total_score = calculator.calculate_total(factor_scores)
+
+        # ML用特徴量を構築
+        if predictor:
+            past_stats = _calculate_past_stats(past_results, race.date)
+            race_result_data = {
+                "horse_id": result.horse_id,
+                "odds": result.odds,
+                "popularity": result.popularity,
+                "weight": result.weight,
+                "weight_diff": result.weight_diff,
+                "age": result.age,
+                "impost": result.impost,
+                "horse_number": result.horse_number,
+            }
+            features = feature_builder.build_features(
+                race_result=race_result_data,
+                factor_scores=factor_scores,
+                field_size=len(results),
+                past_stats=past_stats,
+            )
+            feature_names = feature_builder.get_feature_names()
+            ml_features.append([features[name] for name in feature_names])
+            horse_ids.append(result.horse_id)
+
+        scores.append(
+            {
+                "horse_id": result.horse_id,
+                "horse_number": result.horse_number,
+                "horse_name": result.horse.name if result.horse else "不明",
+                "total": total_score,
+                "past_results": factor_scores["past_results"],
+                "course_fit": factor_scores["course_fit"],
+                "time_index": factor_scores["time_index"],
+                "last_3f": factor_scores["last_3f"],
+                "popularity": factor_scores["popularity"],
+                "probability": None,  # 後で設定
+                "ml_rank": None,  # 後で設定
+            }
+        )
+
+    # ML予測を実行
+    if predictor and ml_features:
+        X = np.array(ml_features)
+        predictions = predictor.predict_with_ranking(X, horse_ids)
+
+        # 予測結果をscoresにマージ
+        pred_map = {p["horse_id"]: p for p in predictions}
+        for score in scores:
+            pred = pred_map.get(score["horse_id"])
+            if pred:
+                score["probability"] = pred["probability"]
+                score["ml_rank"] = pred["rank"]
+
+    # ML予測ランキング順でソート（予測がある場合）、なければ総合スコア順
+    if predictor:
+        scores.sort(key=lambda x: x["ml_rank"] if x["ml_rank"] else 999)
+    else:
+        scores.sort(key=lambda x: x["total"] or 0, reverse=True)
+
+    # 表形式で出力
+    _print_score_table_with_ml(scores, predictor is not None)
+    click.echo("")
+
+
+def _print_score_table_with_ml(scores: list[dict], with_ml: bool) -> None:
+    """スコアテーブルを表示する（ML予測付き）
+
+    Args:
+        scores: スコアリスト
+        with_ml: ML予測を含むかどうか
+    """
+    if with_ml:
+        # ML予測あり
+        click.echo(
+            f"{'予測':^4} | {'馬番':^4} | {'馬名':^12} | {'3着内確率':^8} | "
+            f"{'総合':^6} | {'過去':^6} | {'適性':^6} | {'タイム':^6} | {'上がり':^6} | {'人気':^6}"
+        )
+        click.echo("-" * 100)
+
+        for score in scores:
+            rank = f"{score['ml_rank']}" if score["ml_rank"] else "-"
+            prob = f"{score['probability']:.1%}" if score["probability"] is not None else "-"
+            total = f"{score['total']:.1f}" if score["total"] is not None else "-"
+            past = f"{score['past_results']:.1f}" if score["past_results"] is not None else "-"
+            course = f"{score['course_fit']:.1f}" if score["course_fit"] is not None else "-"
+            time_idx = f"{score['time_index']:.1f}" if score["time_index"] is not None else "-"
+            last_3f = f"{score['last_3f']:.1f}" if score["last_3f"] is not None else "-"
+            pop = f"{score['popularity']:.1f}" if score["popularity"] is not None else "-"
+
+            horse_name = score["horse_name"][:12] if len(score["horse_name"]) > 12 else score["horse_name"]
+
+            click.echo(
+                f"{rank:^4} | {score['horse_number']:^4} | {horse_name:^12} | "
+                f"{prob:^8} | {total:^6} | {past:^6} | {course:^6} | {time_idx:^6} | {last_3f:^6} | {pop:^6}"
+            )
+
+        # 確率50%以上の馬数
+        high_prob_count = sum(1 for s in scores if s["probability"] and s["probability"] >= 0.5)
+        if high_prob_count > 0:
+            click.echo(f"\n※ 確率50%以上: {high_prob_count}頭")
+    else:
+        # 従来のスコアのみ表示
+        _print_score_table(scores)
 
 
 @main.command("migrate-grades")
