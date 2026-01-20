@@ -8,6 +8,19 @@ from click.testing import CliRunner
 
 from keiba.cli import main
 
+# LightGBMが使用可能か確認
+try:
+    import lightgbm  # noqa: F401
+
+    LIGHTGBM_AVAILABLE = True
+except (ImportError, OSError):
+    LIGHTGBM_AVAILABLE = False
+
+skip_without_lightgbm = pytest.mark.skipif(
+    not LIGHTGBM_AVAILABLE,
+    reason="LightGBM is not available (missing libomp or other dependency)",
+)
+
 
 class TestMainGroup:
     """main()コマンドグループのテスト"""
@@ -502,6 +515,7 @@ class TestAnalyzeCommand:
         assert result.exit_code != 0
 
 
+@skip_without_lightgbm
 class TestAnalyzeCommandExecution:
     """analyzeコマンドの実行テスト"""
 
@@ -792,6 +806,7 @@ def sample_db(tmp_path):
     return str(tmp_path / "test_keiba.db")
 
 
+@skip_without_lightgbm
 class TestAnalyzeWithML:
     """analyzeコマンドのML予測テスト"""
 

@@ -3,8 +3,25 @@
 import numpy as np
 import pytest
 
-from keiba.ml.predictor import Predictor
-from keiba.ml.trainer import Trainer
+# LightGBMが使用可能か確認
+try:
+    import lightgbm  # noqa: F401
+
+    LIGHTGBM_AVAILABLE = True
+except (ImportError, OSError):
+    LIGHTGBM_AVAILABLE = False
+
+pytestmark = pytest.mark.skipif(
+    not LIGHTGBM_AVAILABLE,
+    reason="LightGBM is not available (missing libomp or other dependency)",
+)
+
+if LIGHTGBM_AVAILABLE:
+    from keiba.ml.predictor import Predictor
+    from keiba.ml.trainer import Trainer
+else:
+    Predictor = None
+    Trainer = None
 
 
 class TestPredictor:
