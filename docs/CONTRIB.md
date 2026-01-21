@@ -40,6 +40,10 @@ keiba/
 │   ├── feature_builder.py  # 特徴量構築
 │   ├── trainer.py          # LightGBMモデル学習
 │   └── predictor.py        # 予測実行
+├── backtest/     # バックテストモジュール
+│   ├── backtester.py  # BacktestEngine
+│   ├── metrics.py     # メトリクス計算
+│   └── reporter.py    # レポート出力
 ├── config/       # 設定（分析ウェイト、血統マスタ等）
 ├── utils/        # ユーティリティ（グレード抽出等）
 ├── db.py         # データベース接続
@@ -127,6 +131,36 @@ keiba migrate-grades --db data/keiba.db
 | オプション | 必須 | デフォルト | 説明 |
 |-----------|------|-----------|------|
 | --db | Yes | - | DBファイルパス |
+
+### keiba backtest
+
+ML予測モデルのバックテストを実行。過去データに対してウォークフォワード方式で検証を行い、予測精度を評価。
+
+```bash
+# 基本（直近1ヶ月）
+keiba backtest --db data/keiba.db
+
+# 期間指定
+keiba backtest --db data/keiba.db --from 2024-10-01 --to 2024-12-31
+
+# 月数指定
+keiba backtest --db data/keiba.db --months 3
+
+# 詳細表示
+keiba backtest --db data/keiba.db -v
+
+# 再学習間隔指定
+keiba backtest --db data/keiba.db --retrain-interval monthly
+```
+
+| オプション | 必須 | デフォルト | 説明 |
+|-----------|------|-----------|------|
+| --db | Yes | - | DBファイルパス |
+| --from | No | - | 開始日（YYYY-MM-DD） |
+| --to | No | - | 終了日（YYYY-MM-DD） |
+| --months | No | 1 | 直近何ヶ月を対象とするか |
+| --retrain-interval | No | weekly | 再学習間隔（daily/weekly/monthly） |
+| -v, --verbose | No | False | 詳細表示 |
 
 ## 分析ファクター
 

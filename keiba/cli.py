@@ -6,6 +6,8 @@ clickを使用してCLIコマンドを提供する。
 import calendar
 import re
 from datetime import date
+from datetime import datetime as dt
+from datetime import timedelta
 
 import click
 from sqlalchemy import or_
@@ -975,6 +977,77 @@ def _print_score_table_with_ml(scores: list[dict], with_ml: bool) -> None:
     else:
         # 従来のスコアのみ表示
         _print_score_table(scores)
+
+
+@main.command()
+@click.option("--db", required=True, type=click.Path(exists=True), help="データベースファイルパス")
+@click.option("--from", "from_date", type=str, help="開始日 (YYYY-MM-DD)")
+@click.option("--to", "to_date", type=str, help="終了日 (YYYY-MM-DD)")
+@click.option("--months", type=int, default=1, help="直近何ヶ月を対象とするか (default: 1)")
+@click.option(
+    "--retrain-interval",
+    type=click.Choice(["daily", "weekly", "monthly"]),
+    default="weekly",
+    help="再学習間隔",
+)
+@click.option("-v", "--verbose", is_flag=True, help="詳細表示")
+def backtest(
+    db: str,
+    from_date: str | None,
+    to_date: str | None,
+    months: int,
+    retrain_interval: str,
+    verbose: bool,
+):
+    """ML予測と7ファクタースコアの精度をバックテストで検証"""
+    from keiba.backtest import BacktestEngine, BacktestReporter, MetricsCalculator
+
+    click.echo("バックテスト開始")
+    click.echo(f"データベース: {db}")
+
+    # 日付範囲を決定
+    if from_date and to_date:
+        try:
+            start_date = dt.strptime(from_date, "%Y-%m-%d").date()
+            end_date = dt.strptime(to_date, "%Y-%m-%d").date()
+        except ValueError:
+            click.echo("日付形式が不正です（YYYY-MM-DD形式で指定してください）")
+            return
+    else:
+        # monthsパラメータから計算
+        end_date = dt.now().date()
+        start_date = end_date - timedelta(days=months * 30)
+
+    start_date_str = start_date.strftime("%Y-%m-%d")
+    end_date_str = end_date.strftime("%Y-%m-%d")
+
+    click.echo(f"期間: {start_date} ~ {end_date}")
+    click.echo(f"再学習間隔: {retrain_interval}")
+    click.echo("")
+
+    backtest_engine = BacktestEngine(
+        db_path=db,
+        start_date=start_date_str,
+        end_date=end_date_str,
+        retrain_interval=retrain_interval,
+    )
+
+    results = list(backtest_engine.run())
+    metrics = MetricsCalculator.calculate(results)
+    reporter = BacktestReporter(
+        start_date=start_date_str,
+        end_date=end_date_str,
+        retrain_interval=retrain_interval,
+    )
+
+    if verbose:
+        for race_result in results:
+            detail = reporter.print_race_detail(race_result)
+            click.echo(detail)
+            click.echo("")
+
+    summary = reporter.print_summary(results, metrics)
+    click.echo(summary)
 
 
 @main.command("migrate-grades")

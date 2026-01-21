@@ -1,6 +1,6 @@
 # Data Models Codemap
 
-> Freshness: 2026-01-20T23:00:00+09:00
+> Freshness: 2026-01-21T10:00:00+09:00
 
 ## Database Schema (SQLite)
 
@@ -178,4 +178,68 @@ FACTOR_WEIGHTS = {
     "running_style": 0.142,  # 14.2% (端数調整)
 }
 # Total: 1.000
+```
+
+## Backtest Data Structures
+
+### PredictionResult
+
+```python
+# keiba/backtest/metrics.py
+
+@dataclass
+class PredictionResult:
+    """1頭の予測結果"""
+    horse_number: int          # 馬番
+    horse_name: str            # 馬名
+    ml_probability: float | None  # ML予測確率
+    ml_rank: int | None        # ML予測順位
+    factor_rank: int           # 7ファクター順位
+    actual_rank: int           # 実際の着順
+```
+
+### RaceBacktestResult
+
+```python
+# keiba/backtest/metrics.py
+
+@dataclass
+class RaceBacktestResult:
+    """1レースのバックテスト結果"""
+    race_id: str               # レースID
+    race_date: str             # YYYY-MM-DD
+    race_name: str             # レース名
+    venue: str                 # 競馬場
+    predictions: list[PredictionResult]  # 予測結果リスト
+```
+
+### Backtest Metrics Schema
+
+```python
+# MetricsCalculator.calculate() の出力
+
+{
+    'ml': {
+        'precision_at_1': float,     # 1位予測の1着率
+        'precision_at_3': float,     # 上位3頭予測の3着以内率
+        'hit_rate_rank_1': float,    # 1位指名の3着以内率
+        'hit_rate_rank_2': float,    # 2位指名の3着以内率
+        'hit_rate_rank_3': float,    # 3位指名の3着以内率
+    },
+    'factor': {
+        'precision_at_1': float,     # 同上（7ファクター版）
+        'precision_at_3': float,
+        'hit_rate_rank_1': float,
+        'hit_rate_rank_2': float,
+        'hit_rate_rank_3': float,
+    }
+}
+```
+
+### RetrainInterval Type
+
+```python
+# keiba/backtest/types.py
+
+RetrainInterval = Literal["daily", "weekly", "monthly"]
 ```

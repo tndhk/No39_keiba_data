@@ -1,35 +1,44 @@
 # Codemap Diff Report
-Generated: 2026-01-20T23:00:00+09:00
+# Generated: 2026-01-21
 
 ## Summary
-- Total codemaps: 2
-- Changed codemaps: 2 (NEW)
-- Diff percentage: 100% (Initial creation)
+
+| File | Before | After | Added | Removed | Change % |
+|------|--------|-------|-------|---------|----------|
+| architecture.md | 85 lines | 122 lines | 40 | 2 | +44% |
+| data.md | 182 lines | 245 lines | 66 | 1 | +36% |
 
 ## Changes
 
-### docs/CODEMAPS/architecture.md
-Status: NEW
-Lines: 87
-Content:
-- System overview with directory structure
-- Module dependencies
-- Data flow diagram
-- CLI commands table
-- External dependencies
+### docs/CODEMAPS/architecture.md (+44%)
 
-### docs/CODEMAPS/data.md
-Status: NEW
-Lines: 180
-Content:
-- ER diagram (7 tables)
-- Table details (races, horses, race_results)
-- Indexes
-- ML feature schema (19 features)
-- Factor weights configuration
+Added:
+- backtest/ module in System Overview
+- backtest module dependencies (backtester.py, metrics.py, reporter.py)
+- Backtest Pipeline in Data Flow section
+- `backtest` command in CLI Commands table
+- Updated freshness timestamp to 2026-01-21
 
-## Notes
-- Initial codemap generation
-- No previous version to compare
-- Frontend codemap not applicable (Python CLI project)
-- Backend codemap merged into architecture.md
+### docs/CODEMAPS/data.md (+36%)
+
+Added:
+- Backtest Data Structures section
+  - PredictionResult dataclass
+  - RaceBacktestResult dataclass
+- Backtest Metrics Schema
+  - MetricsCalculator.calculate() output format
+- RetrainInterval type definition
+- Updated freshness timestamp to 2026-01-21
+
+## Approval Status
+
+Change percentage exceeds 30% threshold.
+- architecture.md: 44% (exceeds 30%)
+- data.md: 36% (exceeds 30%)
+
+Changes applied as they reflect new backtest feature implementation.
+
+## Files Modified
+
+1. docs/CODEMAPS/architecture.md
+2. docs/CODEMAPS/data.md
