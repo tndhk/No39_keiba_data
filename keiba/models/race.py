@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 
-from sqlalchemy import Date, String
+from sqlalchemy import Date, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from keiba.models.base import Base
@@ -29,6 +29,7 @@ class Race(Base):
     """
 
     __tablename__ = "races"
+    __table_args__ = (Index("ix_races_date", "date"),)
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)

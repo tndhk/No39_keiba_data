@@ -45,6 +45,7 @@ class RaceResult(Base):
     __tablename__ = "race_results"
 
     __table_args__ = (
+        Index("ix_race_results_race_id", "race_id"),
         Index("ix_race_results_horse_id", "horse_id"),
         Index("ix_race_results_jockey_id", "jockey_id"),
         Index("ix_race_results_trainer_id", "trainer_id"),
