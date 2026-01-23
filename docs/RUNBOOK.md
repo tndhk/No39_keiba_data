@@ -112,6 +112,11 @@ keiba backtest --db data/keiba.db -v
 - `weekly`（デフォルト）: 週次再学習（推奨：精度と速度のバランス）
 - `monthly`: 月次再学習（高速だが精度低下の可能性）
 
+パフォーマンス最適化:
+- N+1問題解消: バッチクエリによる効率的なデータ取得
+- セッション管理改善: DBセッションの再利用による接続オーバーヘッド削減
+- クエリ最適化: 馬データ・レース結果の一括取得で大幅な速度向上
+
 ### 馬詳細データの収集
 
 レース結果から取得した馬IDに基づき、馬の詳細情報（血統・成績）を収集。
@@ -389,6 +394,8 @@ keiba backtest --db data/keiba.db --months 3 --retrain-interval monthly
 keiba backtest --db data/keiba.db --months 1
 ```
 
+注記: v1.x以降ではN+1問題の解消とバッチクエリ最適化により、バックテスト速度が大幅に改善されています。上記の解決策を試す前に、最新バージョンにアップデートすることを推奨します。
+
 ## 監視項目
 
 ### 日次確認
@@ -430,3 +437,6 @@ DELETE FROM race_results WHERE race_id LIKE '202403%';
 DELETE FROM races WHERE id LIKE '202403%';
 "
 ```
+
+---
+Freshness: 2026-01-23

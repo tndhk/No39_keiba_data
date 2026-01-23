@@ -2,6 +2,8 @@
 
 競馬データ収集システムの開発ワークフローガイド。
 
+> Freshness: 2026-01-23
+
 ## 環境セットアップ
 
 ### 必要要件
@@ -41,7 +43,7 @@ keiba/
 │   ├── trainer.py          # LightGBMモデル学習
 │   └── predictor.py        # 予測実行
 ├── backtest/     # バックテストモジュール
-│   ├── backtester.py  # BacktestEngine
+│   ├── backtester.py  # BacktestEngine（セッション管理、バッチクエリ）
 │   ├── metrics.py     # メトリクス計算
 │   └── reporter.py    # レポート出力
 ├── config/       # 設定（分析ウェイト、血統マスタ等）
@@ -161,6 +163,37 @@ keiba backtest --db data/keiba.db --retrain-interval monthly
 | --months | No | 1 | 直近何ヶ月を対象とするか |
 | --retrain-interval | No | weekly | 再学習間隔（daily/weekly/monthly） |
 | -v, --verbose | No | False | 詳細表示 |
+
+### BacktestEngine アーキテクチャ
+
+`BacktestEngine` クラスはウォークフォワード方式でML予測モデルを検証する。
+
+#### クラス定数
+
+| 定数 | 値 | 説明 |
+|------|-----|------|
+| MIN_TRAINING_SAMPLES | 100 | モデル学習に必要な最小サンプル数 |
+| MAX_PAST_RESULTS_PER_HORSE | 20 | 馬ごとの取得過去成績数上限 |
+| DEFAULT_FINISH_POSITION | 99 | 着順不明時のデフォルト値 |
+
+#### セッション管理
+
+データベースセッションのライフサイクルを明示的に管理:
+
+| メソッド | 説明 |
+|----------|------|
+| `_open_session()` | セッションを開始（既存セッションがあればそのまま利用） |
+| `_close_session()` | セッションをクローズ |
+| `_with_session(func)` | コンテキスト管理デコレータ（セッションの自動開閉） |
+
+#### バッチクエリメソッド
+
+N+1問題を解消するためのバッチ取得メソッド:
+
+| メソッド | 説明 |
+|----------|------|
+| `_get_horses_past_results_batch(horse_ids, before_date)` | 複数馬の過去成績を一括取得 |
+| `_get_horses_batch(horse_ids)` | 複数馬の基本情報を一括取得 |
 
 ## 分析ファクター
 
@@ -301,7 +334,44 @@ def test_my_scraper(self, mock_fetch, my_fixture_html):
     # テスト実装
 ```
 
-### 5. データベースマイグレーション
+### 5. パフォーマンス最適化
+
+#### N+1問題の解消
+
+ループ内で個別クエリを発行せず、バッチクエリでまとめて取得する:
+
+```python
+# BAD: N+1問題
+for horse_id in horse_ids:
+    results = session.query(PastResult).filter_by(horse_id=horse_id).all()
+
+# GOOD: バッチクエリ
+results = session.query(PastResult).filter(
+    PastResult.horse_id.in_(horse_ids)
+).all()
+# 結果をhorse_idでグループ化
+grouped = defaultdict(list)
+for r in results:
+    grouped[r.horse_id].append(r)
+```
+
+#### バッチクエリ実装パターン
+
+1. 対象IDリストを収集
+2. `IN` 句で一括取得
+3. 結果を辞書でグループ化
+4. 呼び出し元で辞書から参照
+
+```python
+def _get_horses_batch(self, horse_ids: list[str]) -> dict[str, Horse]:
+    """複数馬の情報を一括取得"""
+    horses = self._session.query(Horse).filter(
+        Horse.id.in_(horse_ids)
+    ).all()
+    return {h.id: h for h in horses}
+```
+
+### 6. データベースマイグレーション
 
 モデルにカラムを追加した場合、既存DBには以下でカラムを追加:
 

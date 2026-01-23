@@ -1,6 +1,6 @@
 # Data Models Codemap
 
-> Freshness: 2026-01-21T10:00:00+09:00
+> Freshness: 2026-01-23T10:00:00+09:00
 
 ## Database Schema (SQLite)
 
@@ -242,4 +242,26 @@ class RaceBacktestResult:
 # keiba/backtest/types.py
 
 RetrainInterval = Literal["daily", "weekly", "monthly"]
+```
+
+### BacktestEngine Class Constants
+
+```python
+# keiba/backtest/backtester.py
+
+MIN_TRAINING_SAMPLES = 100       # 学習に必要な最小サンプル数
+MAX_PAST_RESULTS_PER_HORSE = 20  # 馬ごとの過去成績取得上限
+DEFAULT_FINISH_POSITION = 99     # 着順不明時のデフォルト値
+```
+
+### BacktestEngine Batch Query Outputs
+
+```python
+# _get_horses_past_results_batch() の返却値
+# horse_idをキー、過去成績リストを値とする辞書
+dict[str, list[dict]]  # {horse_id: [{"race_id": ..., "finish_position": ..., ...}, ...]}
+
+# _get_horses_batch() の返却値
+# horse_idをキー、Horseオブジェクトを値とする辞書
+dict[str, Horse]  # {horse_id: Horse(id=..., name=..., sex=..., ...)}
 ```

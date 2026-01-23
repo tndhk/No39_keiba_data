@@ -1,6 +1,6 @@
 # Architecture Codemap
 
-> Freshness: 2026-01-21T10:00:00+09:00
+> Freshness: 2026-01-23T10:00:00+09:00
 
 ## System Overview
 
@@ -50,11 +50,16 @@ ml/feature_builder.py
 └── (pure Python, no external deps)
 
 backtest/backtester.py
+├── contextlib (contextmanager)
 ├── db.py (get_engine, get_session)
 ├── models/ (Race, RaceResult, Horse)
 ├── analyzers/factors/ (7 factors)
 ├── ml/ (Trainer, Predictor)
 └── lightgbm (LGBMClassifier) [optional]
+    └── BacktestEngine内部構造:
+        ├── クラス定数: MIN_TRAINING_SAMPLES, MAX_PAST_RESULTS_PER_HORSE, DEFAULT_FINISH_POSITION
+        ├── セッション管理: _open_session(), _close_session(), _with_session()
+        └── バッチクエリ: _get_horses_past_results_batch(), _get_horses_batch()
 
 backtest/metrics.py
 └── (pure Python, no external deps)
