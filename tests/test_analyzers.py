@@ -194,6 +194,110 @@ class TestPastResultsFactor:
         # 有効なレースは1着のみ → 100点
         assert result == 100.0
 
+    def test_past_results_factor_with_presorted_data(self, factor):
+        """ソート済みデータで正しく計算されることを確認"""
+        # 日付降順でソート済みのデータ
+        presorted_race_results = [
+            {
+                "horse_id": "horse123",
+                "finish_position": 1,
+                "total_runners": 10,
+                "race_date": date(2024, 1, 5),  # 最新
+            },
+            {
+                "horse_id": "horse123",
+                "finish_position": 2,
+                "total_runners": 10,
+                "race_date": date(2024, 1, 4),
+            },
+            {
+                "horse_id": "horse123",
+                "finish_position": 3,
+                "total_runners": 10,
+                "race_date": date(2024, 1, 3),
+            },
+            {
+                "horse_id": "horse123",
+                "finish_position": 4,
+                "total_runners": 10,
+                "race_date": date(2024, 1, 2),
+            },
+            {
+                "horse_id": "horse123",
+                "finish_position": 5,
+                "total_runners": 10,
+                "race_date": date(2024, 1, 1),  # 最古
+            },
+        ]
+        # presorted=True を指定して計算
+        result = factor.calculate("horse123", presorted_race_results, presorted=True)
+        assert result is not None
+        assert 0 <= result <= 100
+
+        # presorted=Falseの結果と一致することを確認（データは既にソート済みなので）
+        result_unsorted = factor.calculate(
+            "horse123", presorted_race_results, presorted=False
+        )
+        assert result == result_unsorted
+
+    def test_past_results_factor_skips_sort_when_presorted(self, factor):
+        """presorted=Trueの場合、ソート処理がスキップされることを確認
+
+        逆順データを渡した場合:
+        - presorted=False: ソートされるので正しい最新順で計算
+        - presorted=True: ソートスキップなので渡した順で計算（結果が異なる）
+        """
+        # 日付昇順（逆順）のデータ - 古い順に並んでいる
+        reverse_order_results = [
+            {
+                "horse_id": "horse123",
+                "finish_position": 5,
+                "total_runners": 10,
+                "race_date": date(2024, 1, 1),  # 最古（本来は最後に使われるべき）
+            },
+            {
+                "horse_id": "horse123",
+                "finish_position": 4,
+                "total_runners": 10,
+                "race_date": date(2024, 1, 2),
+            },
+            {
+                "horse_id": "horse123",
+                "finish_position": 3,
+                "total_runners": 10,
+                "race_date": date(2024, 1, 3),
+            },
+            {
+                "horse_id": "horse123",
+                "finish_position": 2,
+                "total_runners": 10,
+                "race_date": date(2024, 1, 4),
+            },
+            {
+                "horse_id": "horse123",
+                "finish_position": 1,
+                "total_runners": 10,
+                "race_date": date(2024, 1, 5),  # 最新（本来は最初に使われるべき）
+            },
+        ]
+
+        # presorted=False: ソートされる -> 1着が最新として計算 -> 高スコア
+        result_with_sort = factor.calculate(
+            "horse123", reverse_order_results, presorted=False
+        )
+
+        # presorted=True: ソートスキップ -> 5着が最初として計算 -> 低スコア
+        result_skip_sort = factor.calculate(
+            "horse123", reverse_order_results, presorted=True
+        )
+
+        # 結果が異なることで、presorted=Trueでソートがスキップされたことを確認
+        assert result_with_sort is not None
+        assert result_skip_sort is not None
+        assert result_with_sort != result_skip_sort
+        # presorted=Falseの方が高スコア（最新の1着が重視される）
+        assert result_with_sort > result_skip_sort
+
 
 class TestCourseFitFactor:
     """CourseFitFactor（コース適性）のテスト"""

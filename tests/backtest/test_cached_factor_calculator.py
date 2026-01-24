@@ -542,6 +542,103 @@ class TestDifferentParamsNotCached:
         assert stats_after_2400["misses"] > stats_after_1600["misses"]
 
 
+class TestFactorInstanceReuse:
+    """ファクターインスタンス再利用のテスト"""
+
+    def test_factor_instances_are_reused(self):
+        """ファクターインスタンスは初期化時に1回だけ作成され再利用される"""
+        from keiba.backtest.factor_calculator import CachedFactorCalculator
+
+        # Arrange
+        cache = FactorCache(max_size=100)
+        calculator = CachedFactorCalculator(factor_cache=cache)
+
+        # Act - _factorsの各インスタンスのidを記録
+        factor_ids_first = {
+            name: id(factor)
+            for name, factor in calculator._factors.items()
+        }
+
+        # 複数回calculate_allを呼んでも同じインスタンスを使用
+        from keiba.backtest.factor_calculator import FactorCalculationContext
+
+        context = FactorCalculationContext(
+            horse_id="horse001",
+            past_results=[],
+            past_race_ids=[],
+            horse=None,
+            race_surface="turf",
+            race_distance=1600,
+            race_venue="tokyo",
+            odds=5.0,
+            popularity=2,
+            passing_order=None,
+        )
+
+        calculator.calculate_all(context)
+        calculator.calculate_all(context)
+        calculator.calculate_all(context)
+
+        factor_ids_after = {
+            name: id(factor)
+            for name, factor in calculator._factors.items()
+        }
+
+        # Assert - 全てのファクターインスタンスのidが同一
+        for name in factor_ids_first:
+            assert factor_ids_first[name] == factor_ids_after[name], \
+                f"Factor '{name}' instance was recreated"
+
+    def test_all_seven_factors_are_initialized(self):
+        """7つのファクターが全て初期化されている"""
+        from keiba.backtest.factor_calculator import CachedFactorCalculator
+
+        # Arrange & Act
+        cache = FactorCache(max_size=100)
+        calculator = CachedFactorCalculator(factor_cache=cache)
+
+        # Assert
+        expected_factors = [
+            "past_results",
+            "course_fit",
+            "time_index",
+            "last_3f",
+            "popularity",
+            "pedigree",
+            "running_style",
+        ]
+        assert len(calculator._factors) == 7
+        for factor_name in expected_factors:
+            assert factor_name in calculator._factors, \
+                f"Factor '{factor_name}' not initialized"
+
+    def test_factor_instances_are_correct_types(self):
+        """ファクターインスタンスが正しい型で初期化されている"""
+        from keiba.backtest.factor_calculator import CachedFactorCalculator
+        from keiba.analyzers.factors import (
+            CourseFitFactor,
+            Last3FFactor,
+            PastResultsFactor,
+            PedigreeFactor,
+            PopularityFactor,
+            RunningStyleFactor,
+            TimeIndexFactor,
+        )
+
+        # Arrange & Act
+        cache = FactorCache(max_size=100)
+        calculator = CachedFactorCalculator(factor_cache=cache)
+
+        # Assert
+        assert isinstance(calculator._factors["past_results"], PastResultsFactor)
+        assert isinstance(calculator._factors["course_fit"], CourseFitFactor)
+        assert isinstance(calculator._factors["time_index"], TimeIndexFactor)
+        assert isinstance(calculator._factors["last_3f"], Last3FFactor)
+        assert isinstance(calculator._factors["popularity"], PopularityFactor)
+        assert isinstance(calculator._factors["pedigree"], PedigreeFactor)
+        assert isinstance(calculator._factors["running_style"], RunningStyleFactor)
+
+
 class TestFactorCalculationContextImmutability:
     """FactorCalculationContextの不変性テスト"""
 

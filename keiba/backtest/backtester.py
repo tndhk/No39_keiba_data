@@ -203,9 +203,21 @@ class BacktestEngine:
         Args:
             cutoff_date: カットオフ日（この日より前のデータのみ使用）
             session: SQLAlchemyセッション（Noneの場合は新規作成）
+
+        Note:
+            ファクターキャッシュは再学習時にクリアしない。
+            ファクター計算結果は馬の過去成績に基づいており、
+            モデルの再学習とは独立しているため、キャッシュを保持することで
+            予測時の計算を省略しパフォーマンスを向上させる。
         """
-        # 再学習時にキャッシュをクリア（古い計算結果との整合性を保つため）
-        self._factor_cache.clear()
+        import logging
+
+        # キャッシュ統計をログ出力（デバッグ用）
+        cache_stats = self._factor_cache.get_stats()
+        logging.debug(
+            f"Model retrain at {cutoff_date}: cache preserved "
+            f"(size={cache_stats['size']}, hit_rate={cache_stats['hit_rate']:.2%})"
+        )
 
         if not self._is_lightgbm_available():
             self._model = None
@@ -439,26 +451,28 @@ class BacktestEngine:
 
         from keiba.models import Race, RaceResult
 
-        # 過去のレース結果を取得
-        past_results_query = (
+        # サブクエリで各レースの出走頭数を事前に計算
+        runners_subq = (
             session.query(
-                RaceResult, Race, func.count(RaceResult.id).over().label("total_runners")
+                RaceResult.race_id,
+                func.count(RaceResult.id).label("total_runners"),
             )
+            .group_by(RaceResult.race_id)
+            .subquery()
+        )
+
+        # 過去のレース結果を取得（サブクエリをJOINして出走頭数も一緒に取得）
+        past_results_query = (
+            session.query(RaceResult, Race, runners_subq.c.total_runners)
             .join(Race, RaceResult.race_id == Race.id)
+            .join(runners_subq, RaceResult.race_id == runners_subq.c.race_id)
             .filter(RaceResult.horse_id == horse_id)
             .order_by(Race.date.desc())
             .limit(self.MAX_PAST_RESULTS_PER_HORSE)
         )
 
         results = []
-        for race_result, race_info, _ in past_results_query:
-            # 同じレースの出走頭数を取得
-            total_runners = (
-                session.query(RaceResult)
-                .filter(RaceResult.race_id == race_info.id)
-                .count()
-            )
-
+        for race_result, race_info, total_runners in past_results_query:
             results.append(
                 {
                     "horse_id": race_result.horse_id,
@@ -713,32 +727,36 @@ class BacktestEngine:
 
     def _get_race_data_for_prediction(
         self, race_id: str, session: Session | None = None
-    ) -> dict:
-        """予測用レースデータを取得
+    ) -> tuple[dict, dict[int, int]]:
+        """予測用レースデータと実際の着順を一度のクエリで取得
 
-        レースデータを取得しますが、実際の結果データ（actual_rank、passing_order）
-        は除外します。これは予測時にはこれらが未来データとなるため、使用して
-        はいけないためです。
+        レースデータを取得しますが、馬データには実際の結果データ
+        （actual_rank、passing_order）は含めません。これは予測時には
+        これらが未来データとなるため、使用してはいけないためです。
+
+        ただし、バックテスト評価用に実際の着順は別途返却します。
+        これにより1回のクエリで必要なデータをすべて取得できます。
 
         Args:
             race_id: レースID
             session: SQLAlchemyセッション（Noneの場合は新規作成）
 
         Returns:
-            予測用レースデータの辞書（結果データを除外）
+            タプル(予測用レースデータの辞書, 馬番->着順マッピング)
         """
         from keiba.models import Race, RaceResult
 
         with self._with_session(session) as sess:
             race = sess.get(Race, race_id)
             if not race:
-                return {}
+                return {}, {}
 
             results = (
                 sess.query(RaceResult).filter(RaceResult.race_id == race_id).all()
             )
 
             horses = []
+            actual_results: dict[int, int] = {}
             for r in results:
                 horse_name = r.horse.name if r.horse else "Unknown"
                 horses.append(
@@ -754,8 +772,10 @@ class BacktestEngine:
                         "impost": r.impost,
                     }
                 )
+                # 実際の着順を同時に取得
+                actual_results[r.horse_number] = r.finish_position
 
-            return {
+            race_data = {
                 "race_id": race.id,
                 "race_date": race.date.strftime("%Y-%m-%d"),
                 "race_name": race.name,
@@ -764,11 +784,16 @@ class BacktestEngine:
                 "distance": race.distance,
                 "horses": horses,
             }
+            return race_data, actual_results
 
     def _get_actual_results(
         self, race_id: str, session: Session | None = None
     ) -> dict[int, int]:
         """実際の着順を取得（評価用）
+
+        注意: このメソッドは後方互換性のために残されていますが、
+        _get_race_data_for_predictionが着順も返すようになったため、
+        _predict_race内では使用されなくなりました。
 
         Args:
             race_id: レースID
@@ -1008,8 +1033,10 @@ class BacktestEngine:
         Returns:
             レースのバックテスト結果
         """
-        # 予測用データ取得（未来データを除外）
-        race_data = self._get_race_data_for_prediction(race_id, session=session)
+        # 予測用データと実際の着順を1回のクエリで取得
+        race_data, actual_results = self._get_race_data_for_prediction(
+            race_id, session=session
+        )
 
         if not race_data:
             return RaceBacktestResult(
@@ -1022,8 +1049,7 @@ class BacktestEngine:
 
         predictions = self._calculate_predictions(race_data, session=session)
 
-        # 予測後に実際の着順をマージ
-        actual_results = self._get_actual_results(race_id, session=session)
+        # 予測後に実際の着順をマージ（既に取得済みのデータを使用）
         for pred in predictions:
             pred.actual_rank = actual_results.get(pred.horse_number, 99)
 

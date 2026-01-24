@@ -85,3 +85,69 @@ class TestTrainer:
 
         assert len(importance) == 19
         assert all(v >= 0 for v in importance)
+
+    def test_trainer_accuracy_with_reduced_params(self):
+        """軽量パラメータでも精度が許容範囲内であることを確認（AUC >= 0.55）"""
+        trainer = Trainer(lightweight=True)
+
+        # 学習データを生成（特徴量と結果に相関を持たせる）
+        np.random.seed(42)
+        n_samples = 500
+        X = np.random.rand(n_samples, 19)
+        # 最初の3特徴量の合計が大きいほど1になりやすい
+        prob = 1 / (1 + np.exp(-(X[:, 0] + X[:, 1] + X[:, 2] - 1.5)))
+        y = (np.random.rand(n_samples) < prob).astype(int)
+
+        metrics = trainer.train_with_cv(X, y, n_splits=3)
+
+        assert metrics["auc_roc"] is not None
+        assert metrics["auc_roc"] >= 0.55, (
+            f"AUC should be >= 0.55 with lightweight params, got {metrics['auc_roc']:.4f}"
+        )
+
+    def test_trainer_training_time_reduced(self):
+        """学習時間が短縮されていることを確認（軽量モードは基準時間の50%以下）"""
+        import time
+
+        np.random.seed(42)
+        n_samples = 1000
+        X = np.random.rand(n_samples, 19)
+        y = np.random.randint(0, 2, n_samples)
+
+        # 通常モードでの学習時間を計測
+        trainer_normal = Trainer(lightweight=False)
+        start = time.perf_counter()
+        trainer_normal.train(X, y)
+        normal_time = time.perf_counter() - start
+
+        # 軽量モードでの学習時間を計測
+        trainer_light = Trainer(lightweight=True)
+        start = time.perf_counter()
+        trainer_light.train(X, y)
+        light_time = time.perf_counter() - start
+
+        # 軽量モードは通常モードの50%以下の時間であること
+        assert light_time < normal_time * 0.5, (
+            f"Lightweight training should be < 50% of normal time. "
+            f"Normal: {normal_time:.4f}s, Lightweight: {light_time:.4f}s "
+            f"(ratio: {light_time/normal_time:.2%})"
+        )
+
+    def test_trainer_lightweight_flag_default(self):
+        """デフォルトはlightweight=Falseであること"""
+        trainer = Trainer()
+        assert trainer._lightweight is False
+
+    def test_trainer_lightweight_params(self):
+        """軽量モードで正しいパラメータが設定されること"""
+        trainer = Trainer(lightweight=True)
+        assert trainer._params["num_leaves"] == 15
+        assert trainer._params["learning_rate"] == 0.1
+        assert trainer._params["n_estimators"] == 50
+
+    def test_trainer_normal_params(self):
+        """通常モードで従来のパラメータが維持されること"""
+        trainer = Trainer(lightweight=False)
+        assert trainer._params["num_leaves"] == 31
+        assert trainer._params["learning_rate"] == 0.05
+        assert trainer._params["n_estimators"] == 100

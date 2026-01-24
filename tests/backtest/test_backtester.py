@@ -171,7 +171,7 @@ class TestPredictionPhaseNoFutureData:
             mock_sess.query.return_value.filter.return_value.all.return_value = [mock_result]
 
             # _get_race_data_for_prediction を呼び出し
-            result = engine._get_race_data_for_prediction("2024010101")
+            result, actual_results = engine._get_race_data_for_prediction("2024010101")
 
             # 返り値の horses に actual_rank が含まれていないことを確認
             assert "horses" in result
@@ -222,7 +222,7 @@ class TestPredictionPhaseNoFutureData:
             mock_sess.get.return_value = mock_race
             mock_sess.query.return_value.filter.return_value.all.return_value = [mock_result]
 
-            result = engine._get_race_data_for_prediction("2024010101")
+            result, actual_results = engine._get_race_data_for_prediction("2024010101")
 
             # 返り値の horses に passing_order が含まれていないことを確認
             assert "horses" in result
@@ -376,20 +376,21 @@ class TestPredictRace:
 
         # 実際のDBを使わずにモックで検証
         with patch.object(engine, "_get_race_data_for_prediction") as mock_get_race, \
-             patch.object(engine, "_get_actual_results") as mock_get_actual, \
              patch.object(engine, "_calculate_predictions") as mock_calc:
-            mock_get_race.return_value = {
-                "race_id": "202401010101",
-                "race_date": "2024-01-01",
-                "race_name": "Test Race",
-                "venue": "Tokyo",
-                "horses": [
-                    {"horse_number": 1, "horse_name": "Horse1"},
-                    {"horse_number": 2, "horse_name": "Horse2"},
-                ],
-            }
-
-            mock_get_actual.return_value = {1: 1, 2: 2}
+            # 新しい戻り値形式: (race_data, actual_results)
+            mock_get_race.return_value = (
+                {
+                    "race_id": "202401010101",
+                    "race_date": "2024-01-01",
+                    "race_name": "Test Race",
+                    "venue": "Tokyo",
+                    "horses": [
+                        {"horse_number": 1, "horse_name": "Horse1"},
+                        {"horse_number": 2, "horse_name": "Horse2"},
+                    ],
+                },
+                {1: 1, 2: 2},  # actual_results
+            )
 
             mock_calc.return_value = [
                 PredictionResult(
@@ -546,13 +547,147 @@ class TestPredictRaceEmptyData:
         )
 
         with patch.object(engine, "_get_race_data_for_prediction") as mock_get_race:
-            mock_get_race.return_value = {}
+            # 新しい戻り値形式: (race_data, actual_results)
+            mock_get_race.return_value = ({}, {})
 
             result = engine._predict_race("nonexistent")
 
             assert result.race_id == "nonexistent"
             assert result.race_date == ""
             assert result.predictions == []
+
+
+class TestPredictRaceSingleQuery:
+    """_predict_race のクエリ最適化テスト"""
+
+    def test_predict_race_single_query_for_results(self, tmp_path):
+        """_predict_raceがRaceResultを1回のクエリで取得することを確認
+
+        _get_race_data_for_predictionが予測用データと着順を同時に返すため、
+        RaceResultへのクエリは1回のみ発行される。
+        """
+        import logging
+        from datetime import date as dt_date
+
+        from keiba.db import get_engine, get_session, init_db
+        from keiba.models import Horse, Jockey, Race, RaceResult, Trainer
+
+        db_path = str(tmp_path / "test_query.db")
+        engine_db = get_engine(db_path)
+        init_db(engine_db)
+
+        # テストデータを作成
+        with get_session(engine_db) as session:
+            horse1 = Horse(id="horse001", name="Horse1", sex="牡", birth_year=2020)
+            horse2 = Horse(id="horse002", name="Horse2", sex="牝", birth_year=2020)
+            jockey = Jockey(id="jockey001", name="Test Jockey")
+            trainer = Trainer(id="trainer001", name="Test Trainer")
+            session.add_all([horse1, horse2, jockey, trainer])
+
+            race = Race(
+                id="202401010101",
+                name="Test Race",
+                date=dt_date(2024, 1, 1),
+                course="Tokyo",
+                surface="芝",
+                distance=2000,
+                race_number=1,
+            )
+            session.add(race)
+
+            result1 = RaceResult(
+                race_id="202401010101",
+                horse_id="horse001",
+                jockey_id="jockey001",
+                trainer_id="trainer001",
+                horse_number=1,
+                bracket_number=1,
+                finish_position=1,
+                odds=2.5,
+                popularity=1,
+                time="2:00.0",
+                margin="",
+            )
+            result2 = RaceResult(
+                race_id="202401010101",
+                horse_id="horse002",
+                jockey_id="jockey001",
+                trainer_id="trainer001",
+                horse_number=2,
+                bracket_number=2,
+                finish_position=2,
+                odds=5.0,
+                popularity=2,
+                time="2:00.5",
+                margin="3",
+            )
+            session.add_all([result1, result2])
+
+        engine = BacktestEngine(
+            db_path=db_path,
+            start_date="2024-01-01",
+            end_date="2024-01-31",
+            retrain_interval="weekly",
+        )
+
+        # SQLAlchemyのログを有効化してRaceResultクエリをキャプチャ
+        sql_logger = logging.getLogger("sqlalchemy.engine")
+        original_level = sql_logger.level
+
+        captured_queries = []
+
+        class QueryCapture(logging.Handler):
+            def emit(self, record):
+                captured_queries.append(record.getMessage())
+
+        handler = QueryCapture()
+        handler.setLevel(logging.INFO)
+        sql_logger.addHandler(handler)
+        sql_logger.setLevel(logging.INFO)
+
+        try:
+            with get_session(engine_db) as session:
+                # _predict_raceを実行（_calculate_predictionsはモックして副作用を排除）
+                with patch.object(engine, "_calculate_predictions") as mock_calc:
+                    mock_calc.return_value = [
+                        PredictionResult(
+                            horse_number=1,
+                            horse_name="Horse1",
+                            ml_probability=0.8,
+                            ml_rank=1,
+                            factor_rank=1,
+                            actual_rank=99,
+                        ),
+                        PredictionResult(
+                            horse_number=2,
+                            horse_name="Horse2",
+                            ml_probability=0.6,
+                            ml_rank=2,
+                            factor_rank=2,
+                            actual_rank=99,
+                        ),
+                    ]
+                    result = engine._predict_race("202401010101", session=session)
+
+            # 結果が正しく取得されたことを確認
+            assert result.race_id == "202401010101"
+            assert len(result.predictions) == 2
+
+            # RaceResultテーブルへのクエリ回数をカウント
+            race_result_queries = [
+                q for q in captured_queries
+                if "race_result" in q.lower() and "SELECT" in q.upper()
+            ]
+
+            # 現状は2回クエリが発行されているはず
+            # 最適化後は1回に減少すべき
+            assert len(race_result_queries) <= 1, (
+                f"RaceResult queries should be at most 1, but got {len(race_result_queries)}. "
+                f"Queries: {race_result_queries}"
+            )
+        finally:
+            sql_logger.removeHandler(handler)
+            sql_logger.setLevel(original_level)
 
 
 class TestTrainModelWithoutLightGBM:
@@ -983,6 +1118,204 @@ class TestGetHorsePastResults:
         assert past_results[0]["finish_position"] == 1
         assert past_results[0]["surface"] == "芝"
         assert past_results[0]["distance"] == 2000
+
+    def test_get_horse_past_results_returns_correct_total_runners(self, tmp_path):
+        """total_runnersが正しく各レースの出走頭数を返すことを確認"""
+        from datetime import date as dt_date
+
+        from keiba.db import get_engine, get_session, init_db
+        from keiba.models import Horse, Jockey, Race, RaceResult, Trainer
+
+        db_path = str(tmp_path / "test.db")
+        engine_db = get_engine(db_path)
+        init_db(engine_db)
+
+        with get_session(engine_db) as session:
+            # 馬を2頭作成
+            horse1 = Horse(id="horse001", name="Test Horse 1", sex="牡", birth_year=2020)
+            horse2 = Horse(id="horse002", name="Test Horse 2", sex="牝", birth_year=2020)
+            jockey = Jockey(id="jockey001", name="Test Jockey")
+            trainer = Trainer(id="trainer001", name="Test Trainer")
+            session.add_all([horse1, horse2, jockey, trainer])
+
+            # レース1: 2頭出走
+            race1 = Race(
+                id="2024010101",
+                name="Race 1",
+                date=dt_date(2024, 1, 1),
+                course="Tokyo",
+                surface="芝",
+                distance=2000,
+                race_number=1,
+            )
+            session.add(race1)
+
+            result1_1 = RaceResult(
+                race_id="2024010101",
+                horse_id="horse001",
+                jockey_id="jockey001",
+                trainer_id="trainer001",
+                horse_number=1,
+                bracket_number=1,
+                finish_position=1,
+                odds=2.5,
+                popularity=1,
+                time="2:00.0",
+                margin="",
+                last_3f=33.5,
+            )
+            result1_2 = RaceResult(
+                race_id="2024010101",
+                horse_id="horse002",
+                jockey_id="jockey001",
+                trainer_id="trainer001",
+                horse_number=2,
+                bracket_number=1,
+                finish_position=2,
+                odds=3.0,
+                popularity=2,
+                time="2:00.5",
+                margin="",
+                last_3f=34.0,
+            )
+            session.add_all([result1_1, result1_2])
+
+            # レース2: horse001のみ出走（1頭のみ）
+            race2 = Race(
+                id="2024010201",
+                name="Race 2",
+                date=dt_date(2024, 1, 2),
+                course="Kyoto",
+                surface="ダート",
+                distance=1800,
+                race_number=1,
+            )
+            session.add(race2)
+
+            result2_1 = RaceResult(
+                race_id="2024010201",
+                horse_id="horse001",
+                jockey_id="jockey001",
+                trainer_id="trainer001",
+                horse_number=1,
+                bracket_number=1,
+                finish_position=1,
+                odds=1.5,
+                popularity=1,
+                time="1:50.0",
+                margin="",
+                last_3f=35.0,
+            )
+            session.add(result2_1)
+
+        engine = BacktestEngine(
+            db_path=db_path,
+            start_date="2024-01-01",
+            end_date="2024-01-31",
+            retrain_interval="weekly",
+        )
+
+        with get_session(engine_db) as session:
+            past_results = engine._get_horse_past_results(session, "horse001")
+
+        # horse001は2レースに出走
+        assert len(past_results) == 2
+
+        # 新しい順（date desc）で返される
+        # race2 (2024-01-02): 1頭出走
+        assert past_results[0]["total_runners"] == 1, f"Expected 1 runner for race2, got {past_results[0]['total_runners']}"
+        # race1 (2024-01-01): 2頭出走
+        assert past_results[1]["total_runners"] == 2, f"Expected 2 runners for race1, got {past_results[1]['total_runners']}"
+
+    def test_get_horse_past_results_no_duplicate_count_query(self, tmp_path):
+        """COUNTクエリが重複して発行されないことを確認（SQLログで検証）"""
+        import logging
+        from datetime import date as dt_date
+
+        from keiba.db import get_engine, get_session, init_db
+        from keiba.models import Horse, Jockey, Race, RaceResult, Trainer
+
+        db_path = str(tmp_path / "test.db")
+        engine_db = get_engine(db_path)
+        init_db(engine_db)
+
+        with get_session(engine_db) as session:
+            horse = Horse(id="horse001", name="Test Horse", sex="牡", birth_year=2020)
+            jockey = Jockey(id="jockey001", name="Test Jockey")
+            trainer = Trainer(id="trainer001", name="Test Trainer")
+            session.add_all([horse, jockey, trainer])
+
+            # 複数レースを作成
+            for i in range(3):
+                race = Race(
+                    id=f"202401{i+1:02d}01",
+                    name=f"Race {i+1}",
+                    date=dt_date(2024, 1, i + 1),
+                    course="Tokyo",
+                    surface="芝",
+                    distance=2000,
+                    race_number=1,
+                )
+                session.add(race)
+
+                result = RaceResult(
+                    race_id=f"202401{i+1:02d}01",
+                    horse_id="horse001",
+                    jockey_id="jockey001",
+                    trainer_id="trainer001",
+                    horse_number=1,
+                    bracket_number=1,
+                    finish_position=1,
+                    odds=2.5,
+                    popularity=1,
+                    time="2:00.0",
+                    margin="",
+                    last_3f=33.5,
+                )
+                session.add(result)
+
+        engine = BacktestEngine(
+            db_path=db_path,
+            start_date="2024-01-01",
+            end_date="2024-01-31",
+            retrain_interval="weekly",
+        )
+
+        # SQLAlchemyのログを有効化してSQLをキャプチャ
+        sql_logger = logging.getLogger("sqlalchemy.engine")
+        original_level = sql_logger.level
+
+        captured_queries = []
+
+        class QueryCapture(logging.Handler):
+            def emit(self, record):
+                captured_queries.append(record.getMessage())
+
+        handler = QueryCapture()
+        handler.setLevel(logging.INFO)
+        sql_logger.addHandler(handler)
+        sql_logger.setLevel(logging.INFO)
+
+        try:
+            with get_session(engine_db) as session:
+                past_results = engine._get_horse_past_results(session, "horse001")
+
+            # 結果が取得できることを確認
+            assert len(past_results) == 3
+
+            # COUNTクエリの数をカウント
+            count_queries = [q for q in captured_queries if "COUNT" in q.upper()]
+
+            # window関数を使った1回のクエリのみであることを確認
+            # ループ内で追加のCOUNTクエリがないことを検証
+            # 期待: window関数の1クエリに含まれるCOUNTのみ
+            assert len(count_queries) <= 1, (
+                f"Duplicate COUNT queries detected. Expected at most 1, got {len(count_queries)}. "
+                f"Queries: {count_queries}"
+            )
+        finally:
+            sql_logger.removeHandler(handler)
+            sql_logger.setLevel(original_level)
 
 
 class TestTrainModelEmptyData:
@@ -3677,12 +4010,12 @@ class TestFactorCacheIntegration:
         # キャッシュにエントリが追加されているはず
         assert stats["size"] > 0, "予測後にキャッシュサイズが増加すべき"
 
-    def test_cache_cleared_on_retrain(self, tmp_path):
-        """再学習時にキャッシュがクリアされること（オプション）
+    def test_cache_preserved_on_retrain(self, tmp_path):
+        """再学習時にキャッシュが保持されること
 
-        モデルの再学習時、キャッシュに古い計算結果が残っていると
-        新しいモデルとの整合性が取れなくなる可能性があるため、
-        再学習時にキャッシュをクリアすることを推奨
+        ファクター計算結果は馬の過去成績に基づいており、
+        モデルの再学習とは独立しているため、キャッシュを保持することで
+        予測時の計算を省略しパフォーマンスを向上させる。
         """
         from datetime import date as dt_date
 
@@ -3789,17 +4122,19 @@ class TestFactorCacheIntegration:
 
         engine._calculate_predictions(race_data)
         stats_before_retrain = engine._factor_cache.get_stats()
-        assert stats_before_retrain["size"] > 0, "予測後にキャッシュにデータが存在すべき"
+        cache_size_before = stats_before_retrain["size"]
+        assert cache_size_before > 0, "予測後にキャッシュにデータが存在すべき"
 
-        # 再学習を実行（LightGBMがなくてもキャッシュクリアは発生すべき）
+        # 再学習を実行
         with patch.object(engine, "_is_lightgbm_available", return_value=False):
             engine._train_model("2024-01-15")
 
-        # 再学習後、キャッシュがクリアされていることを確認
+        # 再学習後もキャッシュが保持されていることを確認
         stats_after_retrain = engine._factor_cache.get_stats()
-        assert stats_after_retrain["size"] == 0, "再学習後にキャッシュがクリアされるべき"
-        assert stats_after_retrain["hits"] == 0, "再学習後にヒットカウントがリセットされるべき"
-        assert stats_after_retrain["misses"] == 0, "再学習後にミスカウントがリセットされるべき"
+        assert stats_after_retrain["size"] == cache_size_before, (
+            f"再学習後もキャッシュサイズが保持されるべき: "
+            f"before={cache_size_before}, after={stats_after_retrain['size']}"
+        )
 
 
 class TestRankByFactorScore:

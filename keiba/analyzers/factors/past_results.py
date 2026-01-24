@@ -26,17 +26,21 @@ class PastResultsFactor(BaseFactor):
         """
         return (total_runners - finish_position + 1) / total_runners * 100
 
-    def calculate(self, horse_id: str, race_results: list, **kwargs) -> float | None:
+    def calculate(
+        self, horse_id: str, race_results: list, presorted: bool = False, **kwargs
+    ) -> float | None:
         """過去成績スコアを計算する
 
         Args:
             horse_id: 馬ID
             race_results: レース結果のリスト（horse_id, finish_position, total_runners, race_dateを含む）
+            presorted: Trueの場合、race_resultsは既に日付降順でソート済みとみなし、
+                       ソート処理をスキップする（デフォルト: False）
 
         Returns:
             0-100の範囲のスコア、データ不足の場合はNone
         """
-        # 対象馬のレースを抽出し、日付でソート（新しい順）
+        # 対象馬のレースを抽出
         horse_races = [
             r
             for r in race_results
@@ -48,8 +52,9 @@ class PastResultsFactor(BaseFactor):
         if not horse_races:
             return None
 
-        # 日付でソート（新しい順）
-        horse_races.sort(key=lambda x: x.get("race_date", ""), reverse=True)
+        # presorted=Falseの場合のみ、日付でソート（新しい順）
+        if not presorted:
+            horse_races.sort(key=lambda x: x.get("race_date", ""), reverse=True)
 
         # 直近5走を取得
         recent_races = horse_races[:5]

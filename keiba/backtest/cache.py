@@ -4,7 +4,6 @@ LRUキャッシュによりファクター計算の重複を回避する。
 """
 
 import hashlib
-import json
 from collections import OrderedDict
 
 
@@ -46,19 +45,14 @@ class FactorCache:
         Returns:
             SHA256ハッシュ化されたキャッシュキー
         """
-        # paramsをソートして一貫性を確保
-        sorted_params = sorted(params.items()) if params else []
+        # パラメータをソートしてタプル化（効率化）
+        params_tuple = tuple(sorted(params.items())) if params else ()
 
-        # キー生成用のデータ構造
-        key_data = {
-            "factor_name": factor_name,
-            "horse_id": horse_id,
-            "past_race_ids": past_race_ids,
-            "params": sorted_params,
-        }
+        # キー生成用のタプル構造（JSON使用を回避）
+        key_tuple = (factor_name, horse_id, tuple(past_race_ids), params_tuple)
 
-        # JSON文字列化してハッシュ
-        key_str = json.dumps(key_data, sort_keys=True, ensure_ascii=False)
+        # reprを使用して文字列化し、ハッシュ
+        key_str = repr(key_tuple)
         return hashlib.sha256(key_str.encode("utf-8")).hexdigest()
 
     def get(self, key: str) -> tuple[bool, float | None]:

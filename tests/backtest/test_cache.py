@@ -174,6 +174,62 @@ class TestCacheStats:
         assert stats["hit_rate"] == 0.5  # 2/4 = 0.5
 
 
+class TestMakeKeyPerformance:
+    """キー生成のパフォーマンステスト"""
+
+    def test_make_key_is_efficient(self):
+        """_make_keyは効率的に実行される（1000回で10ms以内）"""
+        import time
+
+        # Arrange
+        factor_name = "speed_factor"
+        horse_id = "horse001"
+        past_race_ids = ["race001", "race002", "race003", "race004", "race005"]
+        params = {
+            "target_surface": "turf",
+            "target_distance": 1600,
+            "sire": "DeepImpact",
+            "dam_sire": "SundaySilence",
+        }
+
+        # Act - 1000回実行
+        start = time.perf_counter()
+        for _ in range(1000):
+            FactorCache._make_key(
+                factor_name=factor_name,
+                horse_id=horse_id,
+                past_race_ids=past_race_ids,
+                **params,
+            )
+        elapsed = time.perf_counter() - start
+
+        # Assert - 10ms (0.01秒) 以内
+        assert elapsed < 0.01, f"_make_key is too slow: {elapsed:.4f}s for 1000 calls"
+
+    def test_make_key_params_order_independent(self):
+        """paramsの引数順序が異なっても同じキーが生成される"""
+        # Arrange & Act
+        key1 = FactorCache._make_key(
+            factor_name="speed_factor",
+            horse_id="horse001",
+            past_race_ids=["race001"],
+            alpha=1,
+            beta=2,
+            gamma=3,
+        )
+        key2 = FactorCache._make_key(
+            factor_name="speed_factor",
+            horse_id="horse001",
+            past_race_ids=["race001"],
+            gamma=3,
+            alpha=1,
+            beta=2,
+        )
+
+        # Assert
+        assert key1 == key2, "Same params in different order should produce same key"
+
+
 class TestMakeKey:
     """キー生成のテスト"""
 

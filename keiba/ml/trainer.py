@@ -13,20 +13,41 @@ class Trainer:
 
     MIN_SAMPLES = 100  # 最低限必要なサンプル数
 
-    def __init__(self):
-        """初期化"""
+    # 通常モード用パラメータ
+    _NORMAL_PARAMS = {
+        "num_leaves": 31,
+        "learning_rate": 0.05,
+        "n_estimators": 100,
+    }
+
+    # 軽量モード用パラメータ（バックテスト向け）
+    _LIGHTWEIGHT_PARAMS = {
+        "num_leaves": 15,
+        "learning_rate": 0.1,
+        "n_estimators": 50,
+    }
+
+    def __init__(self, lightweight: bool = False):
+        """初期化
+
+        Args:
+            lightweight: Trueの場合、バックテスト用の軽量パラメータを使用
+        """
         self.model: lgb.LGBMClassifier | None = None
+        self._lightweight = lightweight
+
+        # モードに応じたパラメータを選択
+        mode_params = self._LIGHTWEIGHT_PARAMS if lightweight else self._NORMAL_PARAMS
+
         self._params = {
             "objective": "binary",
             "metric": "binary_logloss",
             "boosting_type": "gbdt",
-            "num_leaves": 31,
-            "learning_rate": 0.05,
             "feature_fraction": 0.9,
             "bagging_fraction": 0.8,
             "bagging_freq": 5,
             "verbose": -1,
-            "n_estimators": 100,
+            **mode_params,
         }
 
     def train(self, X: np.ndarray, y: np.ndarray) -> None:
