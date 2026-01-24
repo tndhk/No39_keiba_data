@@ -1,6 +1,6 @@
 # Architecture Codemap
 
-> Freshness: 2026-01-23T10:00:00+09:00
+> Freshness: 2026-01-24T10:00:00+09:00
 
 ## System Overview
 
@@ -21,6 +21,8 @@ keiba/                    # 競馬データ収集・分析CLI
 │   └── reporter.py      # BacktestReporter（結果出力）
 ├── config/              # 設定・マスタデータ
 └── utils/               # ユーティリティ
+scripts/                  # 運用スクリプト
+└── add_indexes.py       # 既存DBへのインデックス追加
 ```
 
 ## Module Dependencies

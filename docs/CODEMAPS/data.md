@@ -1,6 +1,6 @@
 # Data Models Codemap
 
-> Freshness: 2026-01-23T10:00:00+09:00
+> Freshness: 2026-01-24T10:00:00+09:00
 
 ## Database Schema (SQLite)
 
@@ -119,9 +119,22 @@
 
 ### Indexes
 
-- `ix_race_results_horse_id` on race_results(horse_id)
-- `ix_race_results_jockey_id` on race_results(jockey_id)
-- `ix_race_results_trainer_id` on race_results(trainer_id)
+バックテストパフォーマンス最適化のため追加されたインデックス:
+
+| Index Name | Table | Column | Purpose |
+|------------|-------|--------|---------|
+| ix_race_results_race_id | race_results | race_id | レース結果JOIN高速化 |
+| ix_races_date | races | date | 日付範囲クエリ高速化 |
+| ix_race_results_horse_id | race_results | horse_id | 馬の過去成績取得高速化 |
+| ix_race_results_jockey_id | race_results | jockey_id | 騎手成績取得高速化 |
+| ix_race_results_trainer_id | race_results | trainer_id | 調教師成績取得高速化 |
+
+**パフォーマンス効果**: バックテスト実行時間 38分 -> 4分（約90%削減）
+
+既存DBへのインデックス追加:
+```bash
+python scripts/add_indexes.py data/keiba.db
+```
 
 ## ML Feature Schema
 

@@ -2,7 +2,7 @@
 
 競馬データ収集システムの開発ワークフローガイド。
 
-> Freshness: 2026-01-23
+> Freshness: 2026-01-24
 
 ## 環境セットアップ
 
@@ -50,9 +50,12 @@ keiba/
 ├── utils/        # ユーティリティ（グレード抽出等）
 ├── db.py         # データベース接続
 └── cli.py        # CLIエントリーポイント
+scripts/
+└── add_indexes.py  # 既存DBへのインデックス追加スクリプト
 tests/
 ├── fixtures/     # テスト用HTMLフィクスチャ
 ├── ml/           # ML関連テスト
+├── test_db_indexes.py  # DBインデックス存在確認テスト
 └── test_*.py     # テストファイル
 ```
 
@@ -378,6 +381,24 @@ def _get_horses_batch(self, horse_ids: list[str]) -> dict[str, Horse]:
 ```bash
 sqlite3 data/keiba.db "ALTER TABLE tablename ADD COLUMN columnname TYPE;"
 ```
+
+### 7. DBインデックス追加
+
+バックテストや大量クエリのパフォーマンス改善のため、インデックスを追加する場合:
+
+```bash
+# スクリプトを使用（推奨）
+python scripts/add_indexes.py data/keiba.db
+
+# 手動で追加する場合
+sqlite3 data/keiba.db "CREATE INDEX IF NOT EXISTS ix_race_results_race_id ON race_results(race_id);"
+sqlite3 data/keiba.db "CREATE INDEX IF NOT EXISTS ix_races_date ON races(date);"
+```
+
+インデックス追加後は `tests/test_db_indexes.py` でインデックスの存在を検証可能。
+
+**注意**: 新規にテーブル作成する場合は、モデル定義（`keiba/models/`）にインデックスを追加すること。
+`scripts/add_indexes.py` は既存DBへの後付けインデックス用。
 
 ## コーディング規約
 
