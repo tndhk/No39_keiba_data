@@ -13,6 +13,7 @@ from keiba.backtest.fukusho_simulator import (
     FukushoSimulator,
     FukushoSummary,
 )
+from keiba.models.entry import ShutubaData
 
 
 # === テストデータ生成ヘルパー ===
@@ -300,12 +301,37 @@ def _make_mock_race(
 
 
 def _make_mock_race_result(
-    horse_number: int, popularity: int
+    horse_number: int,
+    popularity: int,
+    horse_id: str | None = None,
+    horse_name: str | None = None,
+    jockey_id: str | None = None,
+    jockey_name: str | None = None,
+    bracket_number: int | None = None,
+    impost: float | None = None,
+    sex: str | None = None,
+    age: int | None = None,
 ) -> MagicMock:
     """モックRaceResultオブジェクトを作成"""
     mock_result = MagicMock()
     mock_result.horse_number = horse_number
     mock_result.popularity = popularity
+    mock_result.horse_id = horse_id if horse_id else f"horse_{horse_number:03d}"
+    mock_result.jockey_id = jockey_id if jockey_id else f"jockey_{horse_number:03d}"
+    mock_result.bracket_number = bracket_number if bracket_number else (horse_number - 1) // 2 + 1
+    mock_result.impost = impost if impost else 55.0
+    mock_result.sex = sex if sex else "牡"
+    mock_result.age = age if age else 3
+
+    # リレーションシップのモック（horse, jockeyオブジェクト）
+    mock_horse = MagicMock()
+    mock_horse.name = horse_name if horse_name else f"テスト馬{horse_number}"
+    mock_result.horse = mock_horse
+
+    mock_jockey = MagicMock()
+    mock_jockey.name = jockey_name if jockey_name else f"テスト騎手{horse_number}"
+    mock_result.jockey = mock_jockey
+
     return mock_result
 
 
@@ -670,3 +696,455 @@ class TestEdgeCases:
         )
         assert result.payout_total == 1500
         assert result.payout_total / result.investment == 15.0  # 回収率1500%
+
+
+# === _build_shutuba_from_race_results メソッドのテスト ===
+
+
+class TestBuildShutubaFromRaceResults:
+    """_build_shutuba_from_race_results メソッドのテスト
+
+    RaceResultのリストからShutubaDataを構築するメソッドをテストする。
+    """
+
+    @pytest.fixture
+    def simulator(self, tmp_path):
+        """テスト用シミュレータを作成"""
+        db_path = str(tmp_path / "test.db")
+        return FukushoSimulator(db_path)
+
+    def test_build_shutuba_from_race_results_success(self, simulator):
+        """正常系: RaceResultからShutubaDataを正しく構築できる"""
+        # モックRaceオブジェクトを作成
+        mock_race = _make_mock_race(
+            race_id="202501050101",
+            name="1R 3歳未勝利",
+            course="中山",
+            race_date=date(2025, 1, 5),
+        )
+        mock_race.race_number = 1
+        mock_race.distance = 1200
+        mock_race.surface = "芝"
+
+        # モックRaceResultオブジェクトを作成（3頭分）
+        mock_results = [
+            _make_mock_race_result(
+                horse_number=1,
+                popularity=2,
+                horse_id="horse_001",
+                horse_name="テスト馬A",
+                jockey_id="jockey_001",
+                jockey_name="騎手A",
+                bracket_number=1,
+                impost=55.0,
+                sex="牡",
+                age=3,
+            ),
+            _make_mock_race_result(
+                horse_number=2,
+                popularity=1,
+                horse_id="horse_002",
+                horse_name="テスト馬B",
+                jockey_id="jockey_002",
+                jockey_name="騎手B",
+                bracket_number=1,
+                impost=54.0,
+                sex="牝",
+                age=4,
+            ),
+            _make_mock_race_result(
+                horse_number=3,
+                popularity=3,
+                horse_id="horse_003",
+                horse_name="テスト馬C",
+                jockey_id="jockey_003",
+                jockey_name="騎手C",
+                bracket_number=2,
+                impost=57.0,
+                sex="セ",
+                age=5,
+            ),
+        ]
+
+        # _build_shutuba_from_race_resultsを呼び出す
+        shutuba = simulator._build_shutuba_from_race_results(mock_race, mock_results)
+
+        # ShutubaDataの検証
+        assert isinstance(shutuba, ShutubaData)
+        assert shutuba.race_id == "202501050101"
+        assert shutuba.race_name == "1R 3歳未勝利"
+        assert shutuba.race_number == 1
+        assert shutuba.course == "中山"
+        assert shutuba.distance == 1200
+        assert shutuba.surface == "芝"
+        assert shutuba.date == "2025-01-05"
+
+        # エントリーの検証
+        assert len(shutuba.entries) == 3
+
+        # 1頭目の検証
+        entry1 = shutuba.entries[0]
+        assert entry1.horse_id == "horse_001"
+        assert entry1.horse_name == "テスト馬A"
+        assert entry1.horse_number == 1
+        assert entry1.bracket_number == 1
+        assert entry1.jockey_id == "jockey_001"
+        assert entry1.jockey_name == "騎手A"
+        assert entry1.impost == 55.0
+        assert entry1.sex == "牡"
+        assert entry1.age == 3
+
+        # 2頭目の検証
+        entry2 = shutuba.entries[1]
+        assert entry2.horse_id == "horse_002"
+        assert entry2.horse_name == "テスト馬B"
+        assert entry2.horse_number == 2
+        assert entry2.bracket_number == 1
+        assert entry2.jockey_id == "jockey_002"
+        assert entry2.jockey_name == "騎手B"
+        assert entry2.impost == 54.0
+        assert entry2.sex == "牝"
+        assert entry2.age == 4
+
+        # 3頭目の検証
+        entry3 = shutuba.entries[2]
+        assert entry3.horse_id == "horse_003"
+        assert entry3.horse_name == "テスト馬C"
+        assert entry3.horse_number == 3
+        assert entry3.bracket_number == 2
+        assert entry3.jockey_id == "jockey_003"
+        assert entry3.jockey_name == "騎手C"
+        assert entry3.impost == 57.0
+        assert entry3.sex == "セ"
+        assert entry3.age == 5
+
+    def test_build_shutuba_from_race_results_no_results(self, simulator):
+        """異常系: RaceResultがない場合"""
+        # モックRaceオブジェクトを作成
+        mock_race = _make_mock_race(
+            race_id="202501050102",
+            name="2R 3歳未勝利",
+            course="京都",
+            race_date=date(2025, 1, 5),
+        )
+        mock_race.race_number = 2
+        mock_race.distance = 1400
+        mock_race.surface = "ダート"
+
+        # 空のRaceResultリスト
+        mock_results = []
+
+        # _build_shutuba_from_race_resultsを呼び出す
+        shutuba = simulator._build_shutuba_from_race_results(mock_race, mock_results)
+
+        # ShutubaDataの検証（レース情報は設定されるが、entriesは空）
+        assert isinstance(shutuba, ShutubaData)
+        assert shutuba.race_id == "202501050102"
+        assert shutuba.race_name == "2R 3歳未勝利"
+        assert shutuba.race_number == 2
+        assert shutuba.course == "京都"
+        assert shutuba.distance == 1400
+        assert shutuba.surface == "ダート"
+        assert shutuba.date == "2025-01-05"
+        assert shutuba.entries == ()
+
+
+# === PredictionService統合テスト ===
+
+
+class TestSimulateRaceWithPredictionService:
+    """simulate_raceがPredictionServiceを使用するテスト
+
+    simulate_raceは人気順ではなく、PredictionServiceの7ファクタースコア順で
+    Top-N馬を選択することを確認する。
+    """
+
+    @pytest.fixture
+    def simulator(self, tmp_path):
+        """テスト用シミュレータを作成"""
+        db_path = str(tmp_path / "test.db")
+        return FukushoSimulator(db_path)
+
+    def test_simulate_race_uses_prediction_service(self, simulator):
+        """PredictionServiceが呼び出され、予測順でTop-Nが選択されることを確認
+
+        予測順序が人気順と異なる場合、top_n_predictionsは予測順に基づく。
+        モック予測: 馬番5（rank=1）, 馬番3（rank=2）, 馬番1（rank=3）
+        人気順: 馬番1（人気1）, 馬番2（人気2）, 馬番3（人気3）
+        期待: top_n_predictions = (5, 3, 1) （予測順）
+        """
+        from keiba.services.prediction_service import PredictionResult
+
+        mock_race = _make_mock_race(race_id="202501050101")
+        mock_race.race_number = 1
+        mock_race.distance = 1200
+        mock_race.surface = "芝"
+
+        # 人気順: 馬番1(人気1), 馬番2(人気2), 馬番3(人気3), 馬番4(人気4), 馬番5(人気5)
+        mock_results = [
+            _make_mock_race_result(horse_number=1, popularity=1, horse_name="人気1番馬"),
+            _make_mock_race_result(horse_number=2, popularity=2, horse_name="人気2番馬"),
+            _make_mock_race_result(horse_number=3, popularity=3, horse_name="人気3番馬"),
+            _make_mock_race_result(horse_number=4, popularity=4, horse_name="人気4番馬"),
+            _make_mock_race_result(horse_number=5, popularity=5, horse_name="人気5番馬"),
+        ]
+
+        # PredictionServiceの予測結果: 馬番5, 3, 1の順（人気順とは異なる）
+        mock_predictions = [
+            PredictionResult(
+                horse_number=5,
+                horse_name="人気5番馬",
+                horse_id="horse_005",
+                ml_probability=0.0,
+                factor_scores={
+                    "past_results": 80.0,
+                    "course_fit": 75.0,
+                    "time_index": 70.0,
+                    "last_3f": 72.0,
+                    "popularity": 60.0,
+                    "pedigree": 68.0,
+                    "running_style": 65.0,
+                },
+                total_score=75.0,
+                rank=1,
+            ),
+            PredictionResult(
+                horse_number=3,
+                horse_name="人気3番馬",
+                horse_id="horse_003",
+                ml_probability=0.0,
+                factor_scores={
+                    "past_results": 70.0,
+                    "course_fit": 65.0,
+                    "time_index": 60.0,
+                    "last_3f": 62.0,
+                    "popularity": 70.0,
+                    "pedigree": 58.0,
+                    "running_style": 55.0,
+                },
+                total_score=65.0,
+                rank=2,
+            ),
+            PredictionResult(
+                horse_number=1,
+                horse_name="人気1番馬",
+                horse_id="horse_001",
+                ml_probability=0.0,
+                factor_scores={
+                    "past_results": 60.0,
+                    "course_fit": 55.0,
+                    "time_index": 50.0,
+                    "last_3f": 52.0,
+                    "popularity": 90.0,
+                    "pedigree": 48.0,
+                    "running_style": 45.0,
+                },
+                total_score=55.0,
+                rank=3,
+            ),
+            PredictionResult(
+                horse_number=2,
+                horse_name="人気2番馬",
+                horse_id="horse_002",
+                ml_probability=0.0,
+                factor_scores={
+                    "past_results": 50.0,
+                    "course_fit": 45.0,
+                    "time_index": 40.0,
+                    "last_3f": 42.0,
+                    "popularity": 85.0,
+                    "pedigree": 38.0,
+                    "running_style": 35.0,
+                },
+                total_score=45.0,
+                rank=4,
+            ),
+            PredictionResult(
+                horse_number=4,
+                horse_name="人気4番馬",
+                horse_id="horse_004",
+                ml_probability=0.0,
+                factor_scores={
+                    "past_results": 40.0,
+                    "course_fit": 35.0,
+                    "time_index": 30.0,
+                    "last_3f": 32.0,
+                    "popularity": 65.0,
+                    "pedigree": 28.0,
+                    "running_style": 25.0,
+                },
+                total_score=35.0,
+                rank=5,
+            ),
+        ]
+
+        # 複勝対象: 馬番5, 3, 1が3着以内
+        mock_payouts = [
+            {"horse_number": 5, "payout": 450},
+            {"horse_number": 3, "payout": 200},
+            {"horse_number": 1, "payout": 130},
+        ]
+
+        with patch.object(simulator, "_get_session") as mock_session_factory:
+            mock_session = MagicMock()
+            mock_session.__enter__ = MagicMock(return_value=mock_session)
+            mock_session.__exit__ = MagicMock(return_value=False)
+            mock_session.get.return_value = mock_race
+            mock_session.execute.return_value.scalars.return_value.all.return_value = (
+                mock_results
+            )
+            mock_session_factory.return_value = mock_session
+
+            with patch(
+                "keiba.backtest.fukusho_simulator.RaceDetailScraper"
+            ) as mock_scraper_cls:
+                mock_scraper = MagicMock()
+                mock_scraper.fetch_payouts.return_value = mock_payouts
+                mock_scraper_cls.return_value = mock_scraper
+
+                with patch(
+                    "keiba.backtest.fukusho_simulator.PredictionService"
+                ) as mock_prediction_service_cls:
+                    mock_prediction_service = MagicMock()
+                    mock_prediction_service.predict_from_shutuba.return_value = (
+                        mock_predictions
+                    )
+                    mock_prediction_service_cls.return_value = mock_prediction_service
+
+                    result = simulator.simulate_race("202501050101", top_n=3)
+
+        # 予測順（馬番5, 3, 1）になっていることを確認
+        assert result.top_n_predictions == (5, 3, 1), (
+            f"Expected prediction order (5, 3, 1), got {result.top_n_predictions}. "
+            "simulate_race should use PredictionService, not popularity order."
+        )
+
+        # 人気順（馬番1, 2, 3）ではないことを確認
+        assert result.top_n_predictions != (1, 2, 3), (
+            "top_n_predictions should NOT be in popularity order."
+        )
+
+        # 全3頭的中
+        assert result.hits == (5, 3, 1)
+        assert result.payouts == (450, 200, 130)
+        assert result.payout_total == 780
+
+    def test_simulate_race_prediction_order_affects_result(self, simulator):
+        """予測順序が異なると結果も異なることを確認
+
+        同じレースでも予測順序が変われば、top_n_predictionsと的中結果が変わる。
+        """
+        from keiba.services.prediction_service import PredictionResult
+
+        mock_race = _make_mock_race(race_id="202501050102")
+        mock_race.race_number = 2
+        mock_race.distance = 1600
+        mock_race.surface = "ダート"
+
+        # 人気順: 馬番1(人気1), 馬番2(人気2), 馬番3(人気3)
+        mock_results = [
+            _make_mock_race_result(horse_number=1, popularity=1),
+            _make_mock_race_result(horse_number=2, popularity=2),
+            _make_mock_race_result(horse_number=3, popularity=3),
+            _make_mock_race_result(horse_number=4, popularity=4),
+            _make_mock_race_result(horse_number=5, popularity=5),
+        ]
+
+        # 予測順: 馬番4, 5, 2の順（人気4番, 5番, 2番の馬）
+        mock_predictions = [
+            PredictionResult(
+                horse_number=4,
+                horse_name="テスト馬4",
+                horse_id="horse_004",
+                ml_probability=0.0,
+                factor_scores={"past_results": 85.0},
+                total_score=85.0,
+                rank=1,
+            ),
+            PredictionResult(
+                horse_number=5,
+                horse_name="テスト馬5",
+                horse_id="horse_005",
+                ml_probability=0.0,
+                factor_scores={"past_results": 80.0},
+                total_score=80.0,
+                rank=2,
+            ),
+            PredictionResult(
+                horse_number=2,
+                horse_name="テスト馬2",
+                horse_id="horse_002",
+                ml_probability=0.0,
+                factor_scores={"past_results": 75.0},
+                total_score=75.0,
+                rank=3,
+            ),
+            PredictionResult(
+                horse_number=1,
+                horse_name="テスト馬1",
+                horse_id="horse_001",
+                ml_probability=0.0,
+                factor_scores={"past_results": 70.0},
+                total_score=70.0,
+                rank=4,
+            ),
+            PredictionResult(
+                horse_number=3,
+                horse_name="テスト馬3",
+                horse_id="horse_003",
+                ml_probability=0.0,
+                factor_scores={"past_results": 65.0},
+                total_score=65.0,
+                rank=5,
+            ),
+        ]
+
+        # 複勝対象: 馬番1, 3, 5が3着以内
+        # 予測Top3（4, 5, 2）のうち、馬番5のみが複勝対象
+        mock_payouts = [
+            {"horse_number": 1, "payout": 130},
+            {"horse_number": 3, "payout": 180},
+            {"horse_number": 5, "payout": 350},
+        ]
+
+        with patch.object(simulator, "_get_session") as mock_session_factory:
+            mock_session = MagicMock()
+            mock_session.__enter__ = MagicMock(return_value=mock_session)
+            mock_session.__exit__ = MagicMock(return_value=False)
+            mock_session.get.return_value = mock_race
+            mock_session.execute.return_value.scalars.return_value.all.return_value = (
+                mock_results
+            )
+            mock_session_factory.return_value = mock_session
+
+            with patch(
+                "keiba.backtest.fukusho_simulator.RaceDetailScraper"
+            ) as mock_scraper_cls:
+                mock_scraper = MagicMock()
+                mock_scraper.fetch_payouts.return_value = mock_payouts
+                mock_scraper_cls.return_value = mock_scraper
+
+                with patch(
+                    "keiba.backtest.fukusho_simulator.PredictionService"
+                ) as mock_prediction_service_cls:
+                    mock_prediction_service = MagicMock()
+                    mock_prediction_service.predict_from_shutuba.return_value = (
+                        mock_predictions
+                    )
+                    mock_prediction_service_cls.return_value = mock_prediction_service
+
+                    result = simulator.simulate_race("202501050102", top_n=3)
+
+        # 予測順（馬番4, 5, 2）になっていることを確認
+        assert result.top_n_predictions == (4, 5, 2), (
+            f"Expected (4, 5, 2), got {result.top_n_predictions}"
+        )
+
+        # 馬番5のみが複勝対象なので、1頭だけ的中
+        assert result.hits == (5,)
+        assert result.payouts == (350,)
+        assert result.payout_total == 350
+
+        # 人気順（1, 2, 3）だった場合と比較
+        # 人気順なら馬番1, 3が複勝対象で2頭的中だったはず
+        # これは予測順が結果に影響することを示す

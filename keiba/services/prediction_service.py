@@ -147,8 +147,11 @@ class PredictionService:
                 }
             )
 
-        # ML確率降順でソート
-        predictions.sort(key=lambda x: x["ml_probability"], reverse=True)
+        # ML確率降順でソート（同値の場合はtotal_score降順）
+        predictions.sort(
+            key=lambda x: (x["ml_probability"], x["total_score"] or 0.0),
+            reverse=True,
+        )
 
         # ランキングを付与してPredictionResultに変換
         results = []
