@@ -399,3 +399,93 @@ class RaceDetailScraper(BaseScraper):
         html = self.fetch(url)
         soup = self.get_soup(html)
         return self.parse(soup, race_id=race_id)
+
+    def fetch_payouts(self, race_id: str) -> list[dict]:
+        """Fetch fukusho (place) payouts for a specific race.
+
+        Args:
+            race_id: The race ID string (e.g., "202401010101").
+
+        Returns:
+            List of dictionaries containing "horse_number" and "payout" keys.
+            Returns empty list if no payout data is found.
+
+        Example:
+            >>> scraper = RaceDetailScraper()
+            >>> payouts = scraper.fetch_payouts("202401010101")
+            >>> print(payouts)
+            [{"horse_number": 5, "payout": 150}, {"horse_number": 3, "payout": 280}]
+        """
+        url = self._build_url(race_id)
+        html = self.fetch(url)
+        soup = self.get_soup(html)
+        return self._parse_fukusho_payouts(soup)
+
+    def _parse_fukusho_payouts(self, soup: BeautifulSoup) -> list[dict]:
+        """Parse fukusho (place) payouts from the page.
+
+        Args:
+            soup: BeautifulSoup object of the race detail page.
+
+        Returns:
+            List of dictionaries containing "horse_number" and "payout" keys.
+        """
+        payouts = []
+
+        # Find the payout table with class "pay_table_01"
+        pay_tables = soup.find_all("table", class_="pay_table_01")
+        if not pay_tables:
+            return payouts
+
+        # Search for fukusho row in all pay tables
+        for table in pay_tables:
+            fuku_th = table.find("th", class_="fuku")
+            if fuku_th:
+                row = fuku_th.find_parent("tr")
+                if row:
+                    tds = row.find_all("td")
+                    if len(tds) >= 2:
+                        # First td contains horse numbers (can be multiple separated by <br>)
+                        # Second td contains payouts (can be multiple separated by <br>)
+                        horse_numbers = self._parse_br_separated_values(tds[0])
+                        payout_values = self._parse_br_separated_values(tds[1])
+
+                        # Validate that counts match
+                        if len(horse_numbers) != len(payout_values):
+                            return []
+
+                        for horse_num, payout in zip(horse_numbers, payout_values):
+                            try:
+                                # Parse horse number
+                                horse_number = int(horse_num.strip())
+                                # Parse payout (remove commas)
+                                payout_int = int(payout.strip().replace(",", ""))
+                                payouts.append({
+                                    "horse_number": horse_number,
+                                    "payout": payout_int
+                                })
+                            except ValueError:
+                                # Skip malformed data
+                                continue
+                break
+
+        return payouts
+
+    def _parse_br_separated_values(self, td_element) -> list[str]:
+        """Parse values separated by <br> tags in a td element.
+
+        Args:
+            td_element: BeautifulSoup td element.
+
+        Returns:
+            List of string values.
+        """
+        # Get all text content, splitting by br tags
+        values = []
+        for content in td_element.children:
+            if hasattr(content, 'name') and content.name == 'br':
+                continue
+            text = content.get_text(strip=True) if hasattr(content, 'get_text') else str(content).strip()
+            if text:
+                values.append(text)
+        return values

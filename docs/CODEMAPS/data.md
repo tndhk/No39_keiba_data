@@ -1,6 +1,6 @@
 # Data Models Codemap
 
-> Freshness: 2026-01-24T10:00:00+09:00
+> Freshness: 2026-01-24 (Updated: test coverage for predict/review-day, fukusho simulation)
 
 ## Database Schema (SQLite)
 
@@ -278,3 +278,159 @@ dict[str, list[dict]]  # {horse_id: [{"race_id": ..., "finish_position": ..., ..
 # horse_idをキー、Horseオブジェクトを値とする辞書
 dict[str, Horse]  # {horse_id: Horse(id=..., name=..., sex=..., ...)}
 ```
+
+## Scraper Methods
+
+### RaceDetailScraper
+
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `fetch_race_detail(race_id)` | レース詳細と結果を取得 | `dict` (race info + results) |
+| `fetch_payouts(race_id)` | 複勝払戻金を取得 | `list[dict]` (horse_number, payout) |
+
+### fetch_payouts Output Schema
+
+```python
+# RaceDetailScraper.fetch_payouts() の返却値
+[
+    {"horse_number": 5, "payout": 150},   # 1着馬の複勝払戻金
+    {"horse_number": 3, "payout": 280},   # 2着馬の複勝払戻金
+    {"horse_number": 8, "payout": 190},   # 3着馬の複勝払戻金
+]
+```
+
+## Prediction Markdown Schema
+
+### Prediction File (docs/predictions/YYYY-MM-DD-{venue}.md)
+
+```markdown
+# YYYY-MM-DD {競馬場} 予測結果
+
+生成日時: YYYY-MM-DD HH:MM:SS
+
+## {N}R {レース名}
+race_id: {race_id}
+{surface}{distance}m
+
+| 順位 | 馬番 | 馬名 | ML確率 | 総合 |
+|:---:|:---:|:---|:---:|:---:|
+| 1 | 5 | ホースA | 45.2% | 68.5 |
+...
+
+---
+
+## 検証結果  (review-dayで追記)
+
+検証日時: YYYY-MM-DD HH:MM:SS
+
+### 複勝シミュレーション
+
+#### 予測1位のみに賭けた場合
+- 対象レース数: 12
+- 的中数: 7
+- 的中率: 58.3%
+- 投資額: 1200円
+- 払戻額: 1050円
+- 回収率: 87.5%
+
+#### 予測1-3位に各100円賭けた場合
+...
+
+### レース別結果
+| R | 実際の3着以内 | 予測Top3 | Top1的中 | Top3的中数 |
+...
+```
+
+## Fukusho Simulation Data Structures
+
+### _calculate_fukusho_simulation Input/Output
+
+```python
+# Input: predictions (parsed from markdown)
+predictions = {
+    "races": [
+        {
+            "race_id": str,              # レースID (例: "202606010801")
+            "race_number": int,          # レース番号
+            "race_name": str,            # レース名
+            "predictions": [
+                {
+                    "rank": int,         # 予測順位
+                    "horse_number": int, # 馬番
+                    "horse_name": str,   # 馬名
+                    "ml_probability": float,  # ML確率 (0.0-1.0)
+                }
+            ]
+        }
+    ]
+}
+
+# Input: actual_results
+actual_results = {
+    race_number: [1着馬番, 2着馬番, 3着馬番],  # dict[int, list[int]]
+}
+
+# Input: payouts
+payouts = {
+    race_number: {馬番: 払戻金},  # dict[int, dict[int, int]]
+}
+
+# Output: simulation result
+{
+    "top1": {
+        "hits": int,           # 的中数
+        "total_races": int,    # 対象レース数
+        "hit_rate": float,     # 的中率 (0.0-1.0)
+        "payout": int,         # 払戻額合計
+        "investment": int,     # 投資額合計
+        "return_rate": float,  # 回収率 (払戻/投資)
+    },
+    "top3": {
+        "hits": int,           # 的中数
+        "total_bets": int,     # 賭け数
+        "hit_rate": float,     # 的中率 (0.0-1.0)
+        "payout": int,         # 払戻額合計
+        "investment": int,     # 投資額合計
+        "return_rate": float,  # 回収率 (払戻/投資)
+    },
+    "race_results": [
+        {
+            "race_number": int,
+            "actual_top3": list[int],     # 実際の3着以内馬番
+            "predicted_top3": list[int],  # 予測Top3馬番
+            "top1_hit": bool,             # Top1的中フラグ
+            "top3_hits": int,             # Top3中何頭的中したか
+        }
+    ]
+}
+```
+
+## CLI Internal Data Structures
+
+### VENUE_CODE_MAP
+
+```python
+# keiba/cli.py
+VENUE_CODE_MAP = {
+    "札幌": "01",
+    "函館": "02",
+    "福島": "03",
+    "新潟": "04",
+    "東京": "05",
+    "中山": "06",
+    "中京": "07",
+    "京都": "08",
+    "阪神": "09",
+    "小倉": "10",
+}
+```
+
+### race_id Format
+
+```
+202606010801
+│  │ │ │ │└── レース番号 (01-12)
+│  │ │ │└──── 開催日数 (01-12)
+│  │ │└────── 開催回数 (01-05)
+│  │└──────── 競馬場コード (01-10)
+└──┴───────── 年 (西暦4桁)

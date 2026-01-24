@@ -17,6 +17,20 @@ from keiba.models import Horse, Jockey, Race, RaceResult, Trainer
 from keiba.scrapers import HorseDetailScraper, RaceDetailScraper, RaceListScraper
 from keiba.utils.grade_extractor import extract_grade
 
+# 競馬場コードマッピング（race_idの5-6桁目）
+VENUE_CODE_MAP = {
+    "札幌": "01",
+    "函館": "02",
+    "福島": "03",
+    "新潟": "04",
+    "東京": "05",
+    "中山": "06",
+    "中京": "07",
+    "京都": "08",
+    "阪神": "09",
+    "小倉": "10",
+}
+
 
 def extract_race_id_from_url(url: str) -> str:
     """URLからレースIDを抽出する
@@ -1365,3 +1379,691 @@ def _print_prediction_table(predictions: list, with_ml: bool) -> None:
                 f"{total:^6} | {past:^6} | {course:^6} | {time_idx:^6} | "
                 f"{last_3f:^6} | {pop:^6} | {pedigree:^6} | {running:^6}"
             )
+
+
+def _get_race_ids_for_venue(race_urls: list[str], venue_code: str) -> list[str]:
+    """指定競馬場のレースIDをフィルタリングする
+
+    Args:
+        race_urls: レースURLのリスト
+        venue_code: 競馬場コード（2桁の文字列、例: "06"）
+
+    Returns:
+        指定競馬場のレースIDリスト
+    """
+    race_ids = []
+
+    for url in race_urls:
+        # URLからレースIDを抽出
+        match = re.search(r"/race/(\d{12})/?", url)
+        if match:
+            race_id = match.group(1)
+            # race_idの5-6桁目が競馬場コード
+            if len(race_id) >= 6 and race_id[4:6] == venue_code:
+                race_ids.append(race_id)
+
+    return race_ids
+
+
+def _save_predictions_markdown(
+    predictions_data: list,
+    date_str: str,
+    venue: str,
+    output_dir: str | None = None,
+) -> str:
+    """予測結果をMarkdownファイルに保存する
+
+    Args:
+        predictions_data: 予測データのリスト
+        date_str: 日付文字列（YYYY-MM-DD形式）
+        venue: 競馬場名
+        output_dir: 出力ディレクトリ（Noneの場合はdocs/predictions）
+
+    Returns:
+        保存したファイルパス
+    """
+    from pathlib import Path
+
+    # 出力ディレクトリを決定
+    if output_dir is None:
+        base_path = Path(__file__).parent.parent / "docs" / "predictions"
+    else:
+        base_path = Path(output_dir)
+
+    # ディレクトリが存在しない場合は作成
+    base_path.mkdir(parents=True, exist_ok=True)
+
+    # ファイル名を生成（日本語競馬場名をローマ字に変換）
+    venue_romanized = {
+        "札幌": "sapporo",
+        "函館": "hakodate",
+        "福島": "fukushima",
+        "新潟": "niigata",
+        "東京": "tokyo",
+        "中山": "nakayama",
+        "中京": "chukyo",
+        "京都": "kyoto",
+        "阪神": "hanshin",
+        "小倉": "kokura",
+    }
+    venue_name = venue_romanized.get(venue, venue.lower())
+    filename = f"{date_str}-{venue_name}.md"
+    filepath = base_path / filename
+
+    # Markdownコンテンツを生成
+    lines = [
+        f"# {date_str} {venue} 予測結果",
+        "",
+        f"生成日時: {dt.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "",
+    ]
+
+    for race_data in predictions_data:
+        race_id = race_data.get("race_id", "")
+        race_number = race_data.get("race_number", "?")
+        race_name = race_data.get("race_name", "")
+        surface = race_data.get("surface", "")
+        distance = race_data.get("distance", "")
+
+        lines.append(f"## {race_number}R {race_name}")
+        if race_id:
+            lines.append(f"race_id: {race_id}")
+        if surface and distance:
+            lines.append(f"{surface}{distance}m")
+        lines.append("")
+
+        predictions = race_data.get("predictions", [])
+        if predictions:
+            lines.append("| 順位 | 馬番 | 馬名 | ML確率 | 総合 |")
+            lines.append("|:---:|:---:|:---|:---:|:---:|")
+
+            for pred in predictions[:5]:  # 上位5頭のみ
+                rank = pred.get("rank", "")
+                horse_number = pred.get("horse_number", "")
+                horse_name = pred.get("horse_name", "")
+                ml_prob = pred.get("ml_probability", 0)
+                total_score = pred.get("total_score")
+
+                prob_str = f"{ml_prob:.1%}" if ml_prob > 0 else "-"
+                total_str = f"{total_score:.1f}" if total_score else "-"
+
+                lines.append(
+                    f"| {rank} | {horse_number} | {horse_name} | {prob_str} | {total_str} |"
+                )
+        else:
+            lines.append("予測データなし")
+
+        lines.append("")
+
+    # ファイルに書き込み
+    content = "\n".join(lines)
+    filepath.write_text(content, encoding="utf-8")
+
+    return str(filepath)
+
+
+@main.command("predict-day")
+@click.option("--date", "date_str", type=str, default=None, help="開催日（YYYY-MM-DD形式）")
+@click.option("--venue", required=True, type=str, help="競馬場名（例: 中山）")
+@click.option("--db", required=True, type=click.Path(), help="DBファイルパス")
+@click.option("--no-ml", is_flag=True, default=False, help="ML予測をスキップ")
+def predict_day(date_str: str | None, venue: str, db: str, no_ml: bool):
+    """指定日・競馬場の全レースを予測"""
+    from keiba.scrapers.shutuba import ShutubaScraper
+    from keiba.services.prediction_service import PredictionService
+
+    # 日付を決定（デフォルトは今日）
+    if date_str is None:
+        target_date = date.today()
+        date_str = target_date.strftime("%Y-%m-%d")
+    else:
+        try:
+            target_date = dt.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            click.echo(f"日付形式が不正です: {date_str}（YYYY-MM-DD形式で指定してください）")
+            raise SystemExit(1)
+
+    # 競馬場コードを取得
+    if venue not in VENUE_CODE_MAP:
+        valid_venues = ", ".join(VENUE_CODE_MAP.keys())
+        click.echo(f"無効な競馬場名: {venue}")
+        click.echo(f"有効な競馬場: {valid_venues}")
+        raise SystemExit(1)
+
+    venue_code = VENUE_CODE_MAP[venue]
+
+    click.echo(f"予測開始: {date_str} {venue}")
+    click.echo(f"データベース: {db}")
+    click.echo("")
+
+    # DBに接続
+    engine = get_engine(db)
+
+    # レース一覧を取得
+    race_list_scraper = RaceListScraper()
+    try:
+        race_urls = race_list_scraper.fetch_race_urls(
+            target_date.year, target_date.month, target_date.day, jra_only=True
+        )
+    except Exception as e:
+        click.echo(f"レース一覧取得エラー: {e}")
+        raise SystemExit(1)
+
+    # 指定競馬場のレースをフィルタリング
+    race_ids = _get_race_ids_for_venue(race_urls, venue_code)
+
+    if not race_ids:
+        click.echo(f"{date_str} {venue}のレースは見つかりませんでした")
+        raise SystemExit(0)
+
+    click.echo(f"対象レース数: {len(race_ids)}")
+    click.echo("")
+
+    # 各レースの予測を実行
+    shutuba_scraper = ShutubaScraper()
+    predictions_data = []
+    notable_horses = []  # 注目馬リスト
+
+    with get_session(engine) as session:
+        repository = SQLAlchemyRaceResultRepository(session)
+        service = PredictionService(repository=repository, model_path=None)
+
+        for race_id in sorted(race_ids):
+            try:
+                # 出馬表を取得
+                shutuba_data = shutuba_scraper.fetch_shutuba(race_id)
+
+                click.echo(
+                    f"{shutuba_data.race_number}R {shutuba_data.race_name} "
+                    f"{shutuba_data.surface}{shutuba_data.distance}m"
+                )
+
+                # 予測を実行
+                predictions = service.predict_from_shutuba(shutuba_data)
+
+                # 予測データを収集
+                race_predictions = {
+                    "race_id": race_id,
+                    "race_number": shutuba_data.race_number,
+                    "race_name": shutuba_data.race_name,
+                    "surface": shutuba_data.surface,
+                    "distance": shutuba_data.distance,
+                    "predictions": [
+                        {
+                            "rank": p.rank,
+                            "horse_number": p.horse_number,
+                            "horse_name": p.horse_name,
+                            "ml_probability": p.ml_probability,
+                            "total_score": p.total_score,
+                        }
+                        for p in predictions
+                    ],
+                }
+                predictions_data.append(race_predictions)
+
+                # 注目馬を抽出（上位3頭、または確率50%以上）
+                for p in predictions[:3]:
+                    if p.total_score and p.total_score > 50:
+                        notable_horses.append(
+                            {
+                                "race_number": shutuba_data.race_number,
+                                "race_name": shutuba_data.race_name,
+                                "horse_name": p.horse_name,
+                                "horse_number": p.horse_number,
+                                "ml_probability": p.ml_probability,
+                                "total_score": p.total_score,
+                            }
+                        )
+
+            except Exception as e:
+                click.echo(f"  エラー: {e}")
+                continue
+
+    # Markdownファイルに保存
+    if predictions_data:
+        filepath = _save_predictions_markdown(
+            predictions_data=predictions_data,
+            date_str=date_str,
+            venue=venue,
+        )
+        click.echo("")
+        click.echo(f"予測結果を保存しました: {filepath}")
+
+    # 注目馬サマリーを表示
+    if notable_horses:
+        click.echo("")
+        click.echo("=" * 60)
+        click.echo("注目馬サマリー")
+        click.echo("=" * 60)
+
+        for h in notable_horses:
+            prob_str = f"{h['ml_probability']:.1%}" if h["ml_probability"] > 0 else "-"
+            score_str = f"{h['total_score']:.1f}" if h["total_score"] else "-"
+            click.echo(
+                f"{h['race_number']}R {h['horse_number']}番 {h['horse_name']} "
+                f"(ML: {prob_str}, 総合: {score_str})"
+            )
+
+    click.echo("")
+    click.echo("完了")
+
+
+def _parse_predictions_markdown(filepath: str) -> dict:
+    """予測結果Markdownファイルをパースする
+
+    Args:
+        filepath: Markdownファイルパス
+
+    Returns:
+        パースされた予測データ
+        {
+            "races": [
+                {
+                    "race_id": str,
+                    "race_number": int,
+                    "race_name": str,
+                    "predictions": [
+                        {"horse_number": int, "horse_name": str, "rank": int, "ml_probability": float}
+                    ]
+                }
+            ]
+        }
+    """
+    from pathlib import Path
+
+    result = {"races": []}
+
+    path = Path(filepath)
+    if not path.exists():
+        return result
+
+    content = path.read_text(encoding="utf-8")
+    lines = content.split("\n")
+
+    current_race = None
+    in_table = False
+    header_skipped = False
+
+    for line in lines:
+        line = line.strip()
+
+        # レースヘッダー（## 1R テストレース）
+        if line.startswith("## ") and "R " in line:
+            # 前のレースがあれば保存
+            if current_race is not None:
+                result["races"].append(current_race)
+
+            # レース番号とレース名を抽出
+            race_header = line[3:]  # "## "を除去
+            race_match = re.match(r"(\d+)R\s+(.+)", race_header)
+            if race_match:
+                race_number = int(race_match.group(1))
+                race_name = race_match.group(2)
+            else:
+                race_number = 0
+                race_name = race_header
+
+            current_race = {
+                "race_id": "",
+                "race_number": race_number,
+                "race_name": race_name,
+                "predictions": [],
+            }
+            in_table = False
+            header_skipped = False
+
+        # race_id行を検出（race_id: 202606010801）
+        elif line.startswith("race_id:") and current_race is not None:
+            race_id_match = re.match(r"race_id:\s*(\d+)", line)
+            if race_id_match:
+                current_race["race_id"] = race_id_match.group(1)
+
+        # テーブル開始検出
+        elif line.startswith("|") and "順位" in line:
+            in_table = True
+            header_skipped = False
+
+        # テーブルヘッダー区切り行をスキップ
+        elif in_table and line.startswith("|") and "---" in line:
+            header_skipped = True
+
+        # テーブルデータ行
+        elif in_table and header_skipped and line.startswith("|") and current_race is not None:
+            cells = [c.strip() for c in line.split("|")]
+            # 空セルを除去（先頭と末尾の"|"による）
+            cells = [c for c in cells if c]
+
+            if len(cells) >= 4:
+                try:
+                    rank = int(cells[0])
+                    horse_number = int(cells[1])
+                    horse_name = cells[2]
+
+                    # ML確率をパース（"-"の場合は0.0）
+                    ml_prob_str = cells[3].replace("%", "")
+                    if ml_prob_str == "-":
+                        ml_probability = 0.0
+                    else:
+                        ml_probability = float(ml_prob_str) / 100.0
+
+                    current_race["predictions"].append({
+                        "rank": rank,
+                        "horse_number": horse_number,
+                        "horse_name": horse_name,
+                        "ml_probability": ml_probability,
+                    })
+                except (ValueError, IndexError):
+                    # パースエラーはスキップ
+                    pass
+
+        # 空行でテーブル終了
+        elif in_table and not line:
+            in_table = False
+
+    # 最後のレースを保存
+    if current_race is not None:
+        result["races"].append(current_race)
+
+    return result
+
+
+def _calculate_fukusho_simulation(
+    predictions: dict,
+    actual_results: dict,
+    payouts: dict,
+) -> dict:
+    """複勝シミュレーションを計算する
+
+    Args:
+        predictions: パースされた予測データ
+        actual_results: レース番号 -> [1着馬番, 2着馬番, 3着馬番] のマップ
+        payouts: レース番号 -> {馬番: 払戻金} のマップ
+
+    Returns:
+        シミュレーション結果
+        {
+            "top1": {
+                "hits": int,
+                "total_races": int,
+                "hit_rate": float,
+                "payout": int,
+                "investment": int,
+                "return_rate": float,
+            },
+            "top3": {
+                "hits": int,
+                "total_bets": int,
+                "hit_rate": float,
+                "payout": int,
+                "investment": int,
+                "return_rate": float,
+            },
+            "race_results": [...]
+        }
+    """
+    result = {
+        "top1": {
+            "hits": 0,
+            "total_races": 0,
+            "hit_rate": 0.0,
+            "payout": 0,
+            "investment": 0,
+            "return_rate": 0.0,
+        },
+        "top3": {
+            "hits": 0,
+            "total_bets": 0,
+            "hit_rate": 0.0,
+            "payout": 0,
+            "investment": 0,
+            "return_rate": 0.0,
+        },
+        "race_results": [],
+    }
+
+    races = predictions.get("races", [])
+    if not races:
+        return result
+
+    for race in races:
+        race_number = race.get("race_number")
+        race_predictions = race.get("predictions", [])
+
+        if not race_predictions or race_number not in actual_results:
+            continue
+
+        actual_top3 = actual_results[race_number]
+        race_payouts = payouts.get(race_number, {})
+
+        # 予測上位3頭の馬番
+        predicted_top3 = [p["horse_number"] for p in race_predictions[:3]]
+
+        # Top1シミュレーション（予測1位に100円賭け）
+        result["top1"]["total_races"] += 1
+        result["top1"]["investment"] += 100
+
+        if race_predictions:
+            top1_horse = race_predictions[0]["horse_number"]
+            if top1_horse in actual_top3:
+                result["top1"]["hits"] += 1
+                result["top1"]["payout"] += race_payouts.get(top1_horse, 0)
+
+        # Top3シミュレーション（予測1-3位に各100円賭け）
+        race_top3_hits = 0
+        for pred in race_predictions[:3]:
+            horse_num = pred["horse_number"]
+            result["top3"]["total_bets"] += 1
+            result["top3"]["investment"] += 100
+
+            if horse_num in actual_top3:
+                result["top3"]["hits"] += 1
+                result["top3"]["payout"] += race_payouts.get(horse_num, 0)
+                race_top3_hits += 1
+
+        # レース結果を記録
+        result["race_results"].append({
+            "race_number": race_number,
+            "actual_top3": actual_top3,
+            "predicted_top3": predicted_top3,
+            "top1_hit": (race_predictions[0]["horse_number"] in actual_top3) if race_predictions else False,
+            "top3_hits": race_top3_hits,
+        })
+
+    # 的中率と回収率を計算
+    if result["top1"]["total_races"] > 0:
+        result["top1"]["hit_rate"] = result["top1"]["hits"] / result["top1"]["total_races"]
+        result["top1"]["return_rate"] = result["top1"]["payout"] / result["top1"]["investment"]
+
+    if result["top3"]["total_bets"] > 0:
+        result["top3"]["hit_rate"] = result["top3"]["hits"] / result["top3"]["total_bets"]
+        result["top3"]["return_rate"] = result["top3"]["payout"] / result["top3"]["investment"]
+
+    return result
+
+
+def _append_review_to_markdown(filepath: str, review_data: dict) -> None:
+    """検証結果をMarkdownファイルに追記する
+
+    Args:
+        filepath: Markdownファイルパス
+        review_data: 検証結果データ
+    """
+    from pathlib import Path
+
+    path = Path(filepath)
+    if not path.exists():
+        return
+
+    original_content = path.read_text(encoding="utf-8")
+
+    # 検証結果セクションを生成
+    lines = [
+        "",
+        "---",
+        "",
+        "## 検証結果",
+        "",
+        f"検証日時: {dt.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "",
+        "### 複勝シミュレーション",
+        "",
+        "#### 予測1位のみに賭けた場合",
+        "",
+        f"- 対象レース数: {review_data['top1']['total_races']}",
+        f"- 的中数: {review_data['top1']['hits']}",
+        f"- 的中率: {review_data['top1']['hit_rate'] * 100:.1f}%",
+        f"- 投資額: {review_data['top1']['investment']}円",
+        f"- 払戻額: {review_data['top1']['payout']}円",
+        f"- 回収率: {review_data['top1']['return_rate'] * 100:.1f}%",
+        "",
+        "#### 予測1-3位に各100円賭けた場合",
+        "",
+        f"- 賭け数: {review_data['top3']['total_bets']}",
+        f"- 的中数: {review_data['top3']['hits']}",
+        f"- 的中率: {review_data['top3']['hit_rate'] * 100:.1f}%",
+        f"- 投資額: {review_data['top3']['investment']}円",
+        f"- 払戻額: {review_data['top3']['payout']}円",
+        f"- 回収率: {review_data['top3']['return_rate'] * 100:.1f}%",
+        "",
+        "### レース別結果",
+        "",
+        "| R | 実際の3着以内 | 予測Top3 | Top1的中 | Top3的中数 |",
+        "|:---:|:---|:---|:---:|:---:|",
+    ]
+
+    for race_result in review_data.get("race_results", []):
+        race_num = race_result["race_number"]
+        actual = ", ".join(str(h) for h in race_result["actual_top3"])
+        predicted = ", ".join(str(h) for h in race_result["predicted_top3"])
+        top1_hit = "O" if race_result["top1_hit"] else "X"
+        top3_hits = race_result["top3_hits"]
+        lines.append(f"| {race_num} | {actual} | {predicted} | {top1_hit} | {top3_hits} |")
+
+    lines.append("")
+
+    # ファイルに追記
+    new_content = original_content + "\n".join(lines)
+    path.write_text(new_content, encoding="utf-8")
+
+
+@main.command("review-day")
+@click.option("--date", "date_str", type=str, default=None, help="開催日（YYYY-MM-DD形式）")
+@click.option("--venue", required=True, type=str, help="競馬場名（例: 中山）")
+@click.option("--db", required=True, type=click.Path(), help="DBファイルパス")
+def review_day(date_str: str | None, venue: str, db: str):
+    """予測結果と実際の結果を比較検証する"""
+    from pathlib import Path
+
+    # 日付を決定（デフォルトは今日）
+    if date_str is None:
+        target_date = date.today()
+        date_str = target_date.strftime("%Y-%m-%d")
+    else:
+        try:
+            target_date = dt.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            click.echo(f"日付形式が不正です: {date_str}（YYYY-MM-DD形式で指定してください）")
+            raise SystemExit(1)
+
+    # 競馬場名をローマ字に変換
+    venue_romanized = {
+        "札幌": "sapporo",
+        "函館": "hakodate",
+        "福島": "fukushima",
+        "新潟": "niigata",
+        "東京": "tokyo",
+        "中山": "nakayama",
+        "中京": "chukyo",
+        "京都": "kyoto",
+        "阪神": "hanshin",
+        "小倉": "kokura",
+    }
+    venue_name = venue_romanized.get(venue, venue.lower())
+
+    # 予測ファイルパスを構築
+    base_path = Path(__file__).parent.parent / "docs" / "predictions"
+    prediction_file = base_path / f"{date_str}-{venue_name}.md"
+
+    click.echo(f"検証開始: {date_str} {venue}")
+    click.echo(f"予測ファイル: {prediction_file}")
+    click.echo("")
+
+    # 予測ファイルを読み込み
+    if not prediction_file.exists():
+        click.echo(f"予測ファイルが見つかりません: {prediction_file}")
+        raise SystemExit(1)
+
+    predictions = _parse_predictions_markdown(str(prediction_file))
+
+    if not predictions["races"]:
+        click.echo("予測データがありません")
+        raise SystemExit(1)
+
+    # レース結果と払戻金を取得
+    scraper = RaceDetailScraper()
+    actual_results = {}
+    payouts = {}
+
+    for race in predictions["races"]:
+        race_number = race["race_number"]
+        race_id = race.get("race_id", "")
+
+        # race_idが予測ファイルに保存されていない場合はスキップ
+        if not race_id:
+            click.echo(f"{race_number}R: race_idが予測ファイルに含まれていません。スキップします。")
+            continue
+
+        try:
+            # 払戻金を取得
+            payout_data = scraper.fetch_payouts(race_id)
+
+            # 払戻金データを辞書形式に変換
+            race_payouts = {}
+            actual_top3 = []
+            for p in payout_data:
+                horse_num = p["horse_number"]
+                race_payouts[horse_num] = p["payout"]
+                actual_top3.append(horse_num)
+
+            if actual_top3:
+                actual_results[race_number] = actual_top3
+                payouts[race_number] = race_payouts
+                click.echo(f"{race_number}R: 結果取得完了 - 3着以内: {actual_top3}")
+            else:
+                click.echo(f"{race_number}R: 結果データなし")
+
+        except Exception as e:
+            click.echo(f"{race_number}R: 結果取得エラー - {e}")
+
+    click.echo("")
+
+    # シミュレーションを計算
+    review_data = _calculate_fukusho_simulation(predictions, actual_results, payouts)
+
+    # 検証結果をMarkdownに追記
+    _append_review_to_markdown(str(prediction_file), review_data)
+    click.echo(f"検証結果をファイルに追記しました: {prediction_file}")
+
+    # サマリーを表示
+    click.echo("")
+    click.echo("=" * 60)
+    click.echo("検証サマリー")
+    click.echo("=" * 60)
+    click.echo("")
+    click.echo("【予測1位のみに賭けた場合】")
+    click.echo(f"  対象レース数: {review_data['top1']['total_races']}")
+    click.echo(f"  的中数: {review_data['top1']['hits']}")
+    click.echo(f"  的中率: {review_data['top1']['hit_rate'] * 100:.1f}%")
+    click.echo(f"  投資額: {review_data['top1']['investment']}円")
+    click.echo(f"  払戻額: {review_data['top1']['payout']}円")
+    click.echo(f"  回収率: {review_data['top1']['return_rate'] * 100:.1f}%")
+    click.echo("")
+    click.echo("【予測1-3位に各100円賭けた場合】")
+    click.echo(f"  賭け数: {review_data['top3']['total_bets']}")
+    click.echo(f"  的中数: {review_data['top3']['hits']}")
+    click.echo(f"  的中率: {review_data['top3']['hit_rate'] * 100:.1f}%")
+    click.echo(f"  投資額: {review_data['top3']['investment']}円")
+    click.echo(f"  払戻額: {review_data['top3']['payout']}円")
+    click.echo(f"  回収率: {review_data['top3']['return_rate'] * 100:.1f}%")
+    click.echo("")
+    click.echo("完了")

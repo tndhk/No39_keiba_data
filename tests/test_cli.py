@@ -1252,3 +1252,164 @@ class TestPredictCommandExecution:
 
         # race_idが正しく抽出されている
         assert race_id == "202606010802"
+
+
+# ============================================================================
+# _save_predictions_markdown / _parse_predictions_markdown のテスト
+# ============================================================================
+
+
+class TestSavePredictionsMarkdown:
+    """_save_predictions_markdown関数のテスト"""
+
+    def test_save_predictions_with_race_id(self, tmp_path):
+        """予測データにrace_idが含まれている場合、Markdownに保存される"""
+        from keiba.cli import _save_predictions_markdown
+
+        predictions_data = [
+            {
+                "race_id": "202606010801",
+                "race_number": 1,
+                "race_name": "テストレース",
+                "surface": "芝",
+                "distance": 2000,
+                "predictions": [
+                    {
+                        "rank": 1,
+                        "horse_number": 5,
+                        "horse_name": "テストホース",
+                        "ml_probability": 0.623,
+                        "total_score": 75.2,
+                    }
+                ],
+            }
+        ]
+
+        filepath = _save_predictions_markdown(
+            predictions_data=predictions_data,
+            date_str="2026-01-24",
+            venue="中山",
+            output_dir=str(tmp_path),
+        )
+
+        # ファイルが作成された
+        from pathlib import Path
+        path = Path(filepath)
+        assert path.exists()
+
+        # ファイル内容を確認
+        content = path.read_text(encoding="utf-8")
+        assert "race_id: 202606010801" in content
+        assert "1R テストレース" in content
+
+    def test_save_predictions_without_race_id(self, tmp_path):
+        """予測データにrace_idが含まれていない場合、race_id行は出力されない"""
+        from keiba.cli import _save_predictions_markdown
+
+        predictions_data = [
+            {
+                "race_number": 1,
+                "race_name": "テストレース",
+                "surface": "芝",
+                "distance": 2000,
+                "predictions": [],
+            }
+        ]
+
+        filepath = _save_predictions_markdown(
+            predictions_data=predictions_data,
+            date_str="2026-01-24",
+            venue="中山",
+            output_dir=str(tmp_path),
+        )
+
+        # ファイル内容を確認
+        from pathlib import Path
+        content = Path(filepath).read_text(encoding="utf-8")
+        assert "race_id:" not in content
+
+
+class TestParsePredictionsMarkdown:
+    """_parse_predictions_markdown関数のテスト"""
+
+    def test_parse_predictions_with_race_id(self, tmp_path):
+        """race_idを含むMarkdownファイルをパースできる"""
+        from keiba.cli import _parse_predictions_markdown
+
+        # テスト用Markdownファイルを作成
+        content = """# 2026-01-24 中山 予測結果
+
+生成日時: 2026-01-24 10:00:00
+
+## 1R テストレース
+race_id: 202606010801
+芝2000m
+
+| 順位 | 馬番 | 馬名 | ML確率 | 総合 |
+|:---:|:---:|:---|:---:|:---:|
+| 1 | 5 | テストホース | 62.3% | 75.2 |
+| 2 | 3 | テストホース2 | 45.1% | 68.5 |
+
+## 2R テストレース2
+race_id: 202606010802
+芝1600m
+
+| 順位 | 馬番 | 馬名 | ML確率 | 総合 |
+|:---:|:---:|:---|:---:|:---:|
+| 1 | 1 | テストホース3 | - | 80.0 |
+"""
+        filepath = tmp_path / "test-predictions.md"
+        filepath.write_text(content, encoding="utf-8")
+
+        # パース
+        result = _parse_predictions_markdown(str(filepath))
+
+        # 結果を確認
+        assert len(result["races"]) == 2
+
+        race1 = result["races"][0]
+        assert race1["race_id"] == "202606010801"
+        assert race1["race_number"] == 1
+        assert race1["race_name"] == "テストレース"
+        assert len(race1["predictions"]) == 2
+        assert race1["predictions"][0]["horse_number"] == 5
+        assert race1["predictions"][0]["ml_probability"] == pytest.approx(0.623, rel=0.01)
+
+        race2 = result["races"][1]
+        assert race2["race_id"] == "202606010802"
+        assert race2["race_number"] == 2
+        assert race2["predictions"][0]["ml_probability"] == 0.0  # "-"は0.0
+
+    def test_parse_predictions_without_race_id(self, tmp_path):
+        """race_idを含まない古い形式のMarkdownファイルもパースできる"""
+        from keiba.cli import _parse_predictions_markdown
+
+        # テスト用Markdownファイルを作成（race_idなし）
+        content = """# 2026-01-24 中山 予測結果
+
+## 1R テストレース
+芝2000m
+
+| 順位 | 馬番 | 馬名 | ML確率 | 総合 |
+|:---:|:---:|:---|:---:|:---:|
+| 1 | 5 | テストホース | 62.3% | 75.2 |
+"""
+        filepath = tmp_path / "test-predictions.md"
+        filepath.write_text(content, encoding="utf-8")
+
+        # パース
+        result = _parse_predictions_markdown(str(filepath))
+
+        # 結果を確認
+        assert len(result["races"]) == 1
+        race1 = result["races"][0]
+        assert race1["race_id"] == ""  # race_idは空文字
+        assert race1["race_number"] == 1
+        assert race1["race_name"] == "テストレース"
+
+    def test_parse_nonexistent_file(self, tmp_path):
+        """存在しないファイルの場合は空の結果を返す"""
+        from keiba.cli import _parse_predictions_markdown
+
+        result = _parse_predictions_markdown(str(tmp_path / "nonexistent.md"))
+        assert result == {"races": []}

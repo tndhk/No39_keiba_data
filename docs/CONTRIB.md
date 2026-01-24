@@ -2,7 +2,7 @@
 
 競馬データ収集システムの開発ワークフローガイド。
 
-> Freshness: 2026-01-24
+> Freshness: 2026-01-24 (Updated: predict-day/review-day commands)
 
 ## 環境セットアップ
 
@@ -165,6 +165,51 @@ keiba predict --url "https://race.netkeiba.com/race/shutuba.html?race_id=2026060
 - DB内の過去成績（レース日より前のデータのみ使用、データリーク防止）
 - 7因子スコア（past_results, course_fit, time_index, last_3f, popularity, pedigree, running_style）
 - ML予測（オプション、学習済みモデルが必要）
+
+### keiba predict-day
+
+指定日・競馬場の全レースを予測し、Markdownファイルに保存。
+
+```bash
+# 今日の中山全レースを予測
+keiba predict-day --venue 中山 --db data/keiba.db
+
+# 指定日の東京全レースを予測
+keiba predict-day --date 2026-01-25 --venue 東京 --db data/keiba.db
+```
+
+| オプション | 必須 | デフォルト | 説明 |
+|-----------|------|-----------|------|
+| --date | No | 今日 | 開催日（YYYY-MM-DD形式） |
+| --venue | Yes | - | 競馬場名（例: 中山、東京、阪神など） |
+| --db | Yes | - | DBファイルパス |
+| --no-ml | No | False | ML予測をスキップ |
+
+出力ファイル: `docs/predictions/YYYY-MM-DD-{venue}.md`
+
+### keiba review-day
+
+予測結果ファイルと実際のレース結果を比較検証。複勝シミュレーションを計算。
+
+```bash
+# 今日の中山の予測結果を検証
+keiba review-day --venue 中山 --db data/keiba.db
+
+# 指定日の予測結果を検証
+keiba review-day --date 2026-01-24 --venue 中山 --db data/keiba.db
+```
+
+| オプション | 必須 | デフォルト | 説明 |
+|-----------|------|-----------|------|
+| --date | No | 今日 | 開催日（YYYY-MM-DD形式） |
+| --venue | Yes | - | 競馬場名 |
+| --db | Yes | - | DBファイルパス |
+
+検証内容:
+- 予測ファイル（`docs/predictions/YYYY-MM-DD-{venue}.md`）を読み込み
+- `RaceDetailScraper.fetch_payouts()`で複勝払戻金を取得
+- 複勝シミュレーション（予測1位のみ、予測1-3位）を計算
+- 結果をMarkdownファイルに追記
 
 ### keiba backtest
 
