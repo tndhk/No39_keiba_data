@@ -167,6 +167,39 @@ keiba review-day --date 2026-01-24 --venue 中山 --db data/keiba.db
 - 的中率・回収率
 - レース別の予測結果と実際の結果の比較
 
+#### backtest-fukushoコマンド
+
+過去データを使用して複勝馬券の購入戦略をシミュレートし、回収率を計算します。
+
+| オプション | 必須 | デフォルト | 説明 |
+|-----------|------|-----------|------|
+| --from    | No   | 先週の月曜日 | 開始日（YYYY-MM-DD形式） |
+| --to      | No   | 先週の日曜日 | 終了日（YYYY-MM-DD形式） |
+| --last-week | No | True | 先週を対象（デフォルト） |
+| --top-n   | No   | 3 | Top何頭に賭けるか |
+| --venue   | No   | 全会場 | 競馬場フィルタ（複数可） |
+| --db      | Yes  | - | DBファイルパス |
+| -v, --verbose | No | False | レース別詳細表示 |
+
+```bash
+# 先週のバックテスト（デフォルト）
+keiba backtest-fukusho --db data/keiba.db -v
+
+# 期間指定
+keiba backtest-fukusho --from 2026-01-18 --to 2026-01-19 --db data/keiba.db
+
+# 競馬場フィルタ（複数指定可能）
+keiba backtest-fukusho --from 2026-01-18 --to 2026-01-19 --venue 中山 --venue 京都 --db data/keiba.db
+
+# Top5に賭ける戦略
+keiba backtest-fukusho --top-n 5 --db data/keiba.db
+```
+
+シミュレーション結果には以下が含まれます:
+- 対象レース数
+- 総賭け数、的中数、的中率
+- 投資額、払戻額、回収率
+
 分析結果は以下のスコアを算出します：
 - 過去成績: 直近レースの着順ベースのスコア
 - コース適性: 同一条件（芝/ダート、距離）での実績

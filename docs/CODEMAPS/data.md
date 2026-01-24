@@ -1,6 +1,6 @@
 # Data Models Codemap
 
-> Freshness: 2026-01-24 (Updated: test coverage for predict/review-day, fukusho simulation)
+> Freshness: 2026-01-24 (Updated: FukushoSimulator data structures)
 
 ## Database Schema (SQLite)
 
@@ -434,3 +434,74 @@ VENUE_CODE_MAP = {
 │  │ │└────── 開催回数 (01-05)
 │  │└──────── 競馬場コード (01-10)
 └──┴───────── 年 (西暦4桁)
+```
+
+## FukushoSimulator Data Structures
+
+### FukushoRaceResult
+
+```python
+# keiba/backtest/fukusho_simulator.py
+
+@dataclass(frozen=True)
+class FukushoRaceResult:
+    """1レースの複勝シミュレーション結果"""
+    race_id: str                     # レースID
+    race_name: str                   # レース名
+    venue: str                       # 開催場所
+    race_date: str                   # 開催日 (YYYY-MM-DD)
+    top_n_predictions: tuple[int, ...]  # 予測top-n馬番
+    fukusho_horses: tuple[int, ...]     # 複勝対象馬番（3着以内）
+    hits: tuple[int, ...]               # 的中した馬番
+    payouts: tuple[int, ...]            # 的中した払戻額
+    investment: int                     # 投資額（100 * top_n）
+    payout_total: int                   # 払戻総額
+```
+
+### FukushoSummary
+
+```python
+# keiba/backtest/fukusho_simulator.py
+
+@dataclass(frozen=True)
+class FukushoSummary:
+    """期間シミュレーションのサマリー"""
+    period_from: str                 # 期間開始日 (YYYY-MM-DD)
+    period_to: str                   # 期間終了日 (YYYY-MM-DD)
+    total_races: int                 # 総レース数
+    total_bets: int                  # 総ベット数
+    total_hits: int                  # 総的中数
+    hit_rate: float                  # 的中率 (0.0-1.0)
+    total_investment: int            # 総投資額
+    total_payout: int                # 総払戻額
+    return_rate: float               # 回収率 (払戻/投資)
+    race_results: tuple[FukushoRaceResult, ...]  # レース別結果
+```
+
+### FukushoSimulator Class
+
+```python
+# keiba/backtest/fukusho_simulator.py
+
+class FukushoSimulator:
+    """複勝馬券シミュレータ
+
+    予測モデルの出力を使用して、複勝馬券の購入戦略をシミュレートする。
+    現在の実装は人気順で予測を行う（ベースライン）。
+    """
+
+    def __init__(self, db_path: str) -> None: ...
+
+    def simulate_race(self, race_id: str, top_n: int = 3) -> FukushoRaceResult:
+        """1レースの複勝シミュレーション"""
+        ...
+
+    def simulate_period(
+        self,
+        from_date: str,
+        to_date: str,
+        venues: list[str] | None = None,
+        top_n: int = 3,
+    ) -> FukushoSummary:
+        """期間シミュレーションを実行"""
+        ...

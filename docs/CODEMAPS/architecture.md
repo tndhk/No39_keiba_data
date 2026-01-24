@@ -1,6 +1,6 @@
 # Architecture Codemap
 
-> Freshness: 2026-01-24 (Updated: test files for predict/review-day, fetch_payouts)
+> Freshness: 2026-01-24 (Updated: backtest-fukusho command, FukushoSimulator)
 
 ## System Overview
 
@@ -21,6 +21,7 @@ keiba/                    # 競馬データ収集・分析CLI
 ├── backtest/            # バックテストモジュール
 │   ├── __init__.py
 │   ├── backtester.py    # BacktestEngine（ウォークフォワード検証）
+│   ├── fukusho_simulator.py  # FukushoSimulator（複勝シミュレーション）
 │   ├── metrics.py       # MetricsCalculator（精度評価指標）
 │   └── reporter.py      # BacktestReporter（結果出力）
 ├── config/              # 設定・マスタデータ
@@ -75,6 +76,11 @@ backtest/metrics.py
 
 backtest/reporter.py
 └── backtest/metrics.py (PredictionResult, RaceBacktestResult)
+
+backtest/fukusho_simulator.py
+├── sqlalchemy (create_engine, select, Session)
+├── models/ (Race, RaceResult)
+└── scrapers/race_detail.py (RaceDetailScraper.fetch_payouts)
 ```
 
 ## Data Flow
@@ -168,6 +174,7 @@ backtest/reporter.py
 | `review-day` | `cli.review_day()` | 予測結果と実際の結果を比較検証 |
 | `migrate-grades` | `cli.migrate_grades()` | グレード情報マイグレーション |
 | `backtest` | `cli.backtest()` | ML予測のバックテスト検証 |
+| `backtest-fukusho` | `cli.backtest_fukusho()` | 複勝馬券バックテストシミュレーション |
 
 ## External Dependencies
 
