@@ -1,44 +1,95 @@
 # Codemap Diff Report
-# Generated: 2026-01-21
+# Generated: 2026-01-24
 
 ## Summary
 
 | File | Before | After | Added | Removed | Change % |
 |------|--------|-------|-------|---------|----------|
-| architecture.md | 85 lines | 122 lines | 40 | 2 | +44% |
-| data.md | 182 lines | 245 lines | 66 | 1 | +36% |
+| architecture.md | 148 lines | 201 lines | 55 | 2 | +25% |
+| backend.md | 380 lines | 454 lines | 78 | 4 | +20% |
+| data.md | 153 lines | 322 lines | 172 | 3 | +35% |
 
 ## Changes
 
-### docs/CODEMAPS/architecture.md (+44%)
+### codemaps/architecture.md (+25%)
 
 Added:
-- backtest/ module in System Overview
-- backtest module dependencies (backtester.py, metrics.py, reporter.py)
-- Backtest Pipeline in Data Flow section
-- `backtest` command in CLI Commands table
-- Updated freshness timestamp to 2026-01-21
+- Services layer in System Overview diagram (keiba/services/)
+- keiba/models/entry.py (RaceEntry, ShutubaData DTOs)
+- keiba/scrapers/shutuba.py (ShutubaScraper)
+- keiba/services/ directory with prediction_service.py
+- keiba/ml/ module details (FeatureBuilder, Predictor, Trainer)
+- keiba/backtest/ module details
+- ShutubaScraper URL pattern (race.netkeiba.com)
+- PredictionService orchestration step in Data Flow
+- External dependencies: lightgbm, scikit-learn, numpy, joblib
+- `predict` command in CLI Commands table
+- "New Features (2026-01-24)" section with real-time prediction docs
+- Data Leak Prevention notes
+- Updated freshness timestamp to 2026-01-24
 
-### docs/CODEMAPS/data.md (+36%)
+### codemaps/backend.md (+20%)
 
 Added:
-- Backtest Data Structures section
-  - PredictionResult dataclass
-  - RaceBacktestResult dataclass
-- Backtest Metrics Schema
-  - MetricsCalculator.calculate() output format
-- RetrainInterval type definition
-- Updated freshness timestamp to 2026-01-21
+- `predict` command row in Commands table
+- "--predict Command Usage (NEW)" section with examples
+- Internal functions: extract_race_id_from_shutuba_url, _analyze_race_with_ml,
+  _build_training_data, _calculate_past_stats, _print_score_table_with_ml,
+  _print_prediction_table
+- SQLAlchemyRaceResultRepository class documentation
+- ShutubaScraper in Class Hierarchy
+- "ShutubaScraper (keiba/scrapers/shutuba.py) - NEW" section
+- "Services Module (keiba/services/) - NEW" section
+  - PredictionService, PredictionResult, RaceResultRepository
+- "ML Module (keiba/ml/)" section
+- "Backtest Module (keiba/backtest/)" section
+- "Models Module - Entry DTOs" section
+- PredictionService error handling note
+- Updated freshness timestamp to 2026-01-24
+
+### codemaps/data.md (+35%)
+
+Added:
+- Entry DTOs box in Entity Relationship diagram
+- "DTO Models (Dataclasses) - NEW" major section
+  - RaceEntry dataclass with field table and code
+  - ShutubaData dataclass with field table and code
+  - PredictionResult dataclass with field table
+- "2026-01-24: Entry DTOs Added" in Schema Changes History
+- "Data Flow Patterns" section
+  - Historical Data flow diagram
+  - Real-time Prediction flow diagram
+- "Query Patterns" section with example queries
+- Updated freshness timestamp to 2026-01-24
+
+Modified:
+- Section header "Models" -> "ORM Models (SQLAlchemy)"
+
+## New Files Reflected
+
+| File | Module | Key Classes/Functions |
+|------|--------|----------------------|
+| keiba/scrapers/shutuba.py | scrapers | ShutubaScraper |
+| keiba/services/prediction_service.py | services | PredictionService, PredictionResult, RaceResultRepository |
+| keiba/models/entry.py | models | RaceEntry, ShutubaData |
+| keiba/cli.py (updated) | cli | predict command, SQLAlchemyRaceResultRepository |
 
 ## Approval Status
 
-Change percentage exceeds 30% threshold.
-- architecture.md: 44% (exceeds 30%)
-- data.md: 36% (exceeds 30%)
+Change percentage exceeds 30% threshold for data.md.
+- architecture.md: 25% (within threshold)
+- backend.md: 20% (within threshold)
+- data.md: 35% (EXCEEDS 30% threshold)
 
-Changes applied as they reflect new backtest feature implementation.
+The data.md change is justified by:
+1. Addition of new DTO Models section (RaceEntry, ShutubaData, PredictionResult)
+2. Addition of Data Flow Patterns section
+3. Addition of Query Patterns section
+
+These additions reflect the new real-time prediction feature implementation.
 
 ## Files Modified
 
-1. docs/CODEMAPS/architecture.md
-2. docs/CODEMAPS/data.md
+1. codemaps/architecture.md
+2. codemaps/backend.md
+3. codemaps/data.md

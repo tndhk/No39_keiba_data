@@ -35,7 +35,11 @@ pip install -e ".[dev]"
 ```
 keiba/
 ├── models/       # SQLAlchemyモデル定義
+│   └── entry.py  # 出馬表DTO（RaceEntry, ShutubaData）
 ├── scrapers/     # Webスクレイパー
+│   └── shutuba.py  # 出馬表スクレイパー（ShutubaScraper）
+├── services/     # ビジネスロジックサービス
+│   └── prediction_service.py  # 予測サービス（PredictionService）
 ├── analyzers/    # レース分析モジュール
 │   └── factors/  # スコア算出ファクター（7因子）
 ├── ml/           # 機械学習予測モジュール
@@ -136,6 +140,31 @@ keiba migrate-grades --db data/keiba.db
 | オプション | 必須 | デフォルト | 説明 |
 |-----------|------|-----------|------|
 | --db | Yes | - | DBファイルパス |
+
+### keiba predict
+
+出馬表URLからリアルタイム予測を実行。未開催レースに対して7因子スコアとML予測を表示。
+
+```bash
+# 基本使用法（因子スコアのみ）
+keiba predict --url "https://race.netkeiba.com/race/shutuba.html?race_id=202606010801" --db data/keiba.db --no-ml
+
+# ML予測付き（モデルが必要）
+keiba predict --url "https://race.netkeiba.com/race/shutuba.html?race_id=202606010801" --db data/keiba.db
+```
+
+| オプション | 必須 | デフォルト | 説明 |
+|-----------|------|-----------|------|
+| --url | Yes | - | 出馬表ページURL（race.netkeiba.com） |
+| --db | Yes | - | DBファイルパス |
+| --no-ml | No | False | ML予測をスキップし因子スコアのみ表示 |
+
+出馬表URLパターン: `https://race.netkeiba.com/race/shutuba.html?race_id={race_id}`
+
+予測に使用するデータ:
+- DB内の過去成績（レース日より前のデータのみ使用、データリーク防止）
+- 7因子スコア（past_results, course_fit, time_index, last_3f, popularity, pedigree, running_style）
+- ML予測（オプション、学習済みモデルが必要）
 
 ### keiba backtest
 

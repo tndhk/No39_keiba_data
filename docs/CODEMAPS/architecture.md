@@ -1,6 +1,6 @@
 # Architecture Codemap
 
-> Freshness: 2026-01-24T10:00:00+09:00
+> Freshness: 2026-01-24 (Updated: predict command, services/, shutuba.py)
 
 ## System Overview
 
@@ -10,7 +10,11 @@ keiba/                    # 競馬データ収集・分析CLI
 ├── db.py                # DB接続・セッション管理
 ├── constants.py         # 定数定義
 ├── models/              # SQLAlchemy ORM
+│   └── entry.py         # 出馬表DTO（RaceEntry, ShutubaData）
 ├── scrapers/            # Webスクレイパー
+│   └── shutuba.py       # 出馬表スクレイパー（race.netkeiba.com）
+├── services/            # ビジネスロジックサービス
+│   └── prediction_service.py  # 予測サービス（7因子+ML）
 ├── analyzers/           # レース分析エンジン
 │   └── factors/         # スコア算出因子 (7種)
 ├── ml/                  # ML予測モジュール
@@ -31,7 +35,10 @@ scripts/                  # 運用スクリプト
 cli.py
 ├── db.py (get_engine, get_session, init_db)
 ├── models/ (Horse, Jockey, Race, RaceResult, Trainer)
+├── models/entry.py (RaceEntry, ShutubaData) - DTOs
 ├── scrapers/ (HorseDetailScraper, RaceDetailScraper, RaceListScraper)
+├── scrapers/shutuba.py (ShutubaScraper) - 出馬表スクレイピング
+├── services/prediction_service.py (PredictionService, PredictionResult)
 ├── analyzers/factors/ (7 factors)
 ├── analyzers/score_calculator.py
 ├── ml/ (FeatureBuilder, Trainer, Predictor)
@@ -90,6 +97,23 @@ backtest/reporter.py
 [Output: Score Table + ML Prediction]
 ```
 
+### Real-time Prediction Pipeline (predict command)
+
+```
+[race.netkeiba.com/shutuba.html]
+    ↓ scrapers/shutuba.py (ShutubaScraper)
+[ShutubaData (race info + entries)]
+    ↓ services/prediction_service.py
+[PredictionService]
+    ├── RaceResultRepository (DB past results, データリーク防止: before_date)
+    ├── analyzers/factors/ (7 factors)
+    └── ml/predictor (optional)
+    ↓
+[PredictionResult per horse]
+    ↓ cli.py (predict command)
+[Output: Prediction Table]
+```
+
 ### Backtest Pipeline
 
 ```
@@ -113,6 +137,7 @@ backtest/reporter.py
 | `scrape` | `cli.scrape()` | 年月指定でレースデータ収集 |
 | `scrape-horses` | `cli.scrape_horses()` | 馬詳細データ収集 |
 | `analyze` | `cli.analyze()` | レース分析 + ML予測 |
+| `predict` | `cli.predict()` | 出馬表URLからリアルタイム予測 |
 | `migrate-grades` | `cli.migrate_grades()` | グレード情報マイグレーション |
 | `backtest` | `cli.backtest()` | ML予測のバックテスト検証 |
 
