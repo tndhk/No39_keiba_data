@@ -17,6 +17,13 @@ def shutuba_html():
 
 
 @pytest.fixture
+def shutuba_new_format_html():
+    """新形式のテスト用HTMLフィクスチャを読み込む（RaceList_Dateから日付取得）"""
+    fixture_path = Path(__file__).parent.parent / "fixtures" / "shutuba_new_format.html"
+    return fixture_path.read_text(encoding="utf-8")
+
+
+@pytest.fixture
 def shutuba_scraper():
     """ShutubaScraper インスタンスを返す"""
     from keiba.scrapers.shutuba import ShutubaScraper
@@ -249,3 +256,52 @@ class TestShutubaScraperEmptyHtml:
         race_info = shutuba_scraper._parse_race_info(soup)
         # 空HTMLでもデフォルト値が設定される
         assert isinstance(race_info, dict)
+
+
+class TestShutubaScraperNewFormatDate:
+    """新形式HTML（RaceList_Date）からの日付取得テスト"""
+
+    def test_extracts_date_from_race_list_date(
+        self, shutuba_scraper, shutuba_new_format_html
+    ):
+        """RaceList_Date の Active な dd から日付を取得する"""
+        soup = shutuba_scraper.get_soup(shutuba_new_format_html)
+        race_info = shutuba_scraper._parse_race_info(soup, race_id="202606010802")
+
+        assert race_info["date"] == "2026年1月24日"
+
+    def test_date_uses_year_from_race_id(
+        self, shutuba_scraper, shutuba_new_format_html
+    ):
+        """race_id の先頭4文字から年を取得する"""
+        soup = shutuba_scraper.get_soup(shutuba_new_format_html)
+        race_info = shutuba_scraper._parse_race_info(soup, race_id="202506010802")
+
+        assert race_info["date"] == "2025年1月24日"
+
+    def test_old_format_date_takes_precedence(self, shutuba_scraper, shutuba_html):
+        """旧形式（RaceData01に日付あり）は引き続き優先される"""
+        soup = shutuba_scraper.get_soup(shutuba_html)
+        race_info = shutuba_scraper._parse_race_info(soup, race_id="202606010802")
+
+        # 旧形式HTMLの日付は「2026年1月8日」
+        assert race_info["date"] == "2026年1月8日"
+
+    def test_extracts_course_from_new_format(
+        self, shutuba_scraper, shutuba_new_format_html
+    ):
+        """新形式HTMLでもコース名を正しく抽出する"""
+        soup = shutuba_scraper.get_soup(shutuba_new_format_html)
+        race_info = shutuba_scraper._parse_race_info(soup, race_id="202606010802")
+
+        assert race_info["course"] == "中山"
+
+    def test_extracts_surface_and_distance_from_new_format(
+        self, shutuba_scraper, shutuba_new_format_html
+    ):
+        """新形式HTMLでも馬場と距離を正しく抽出する"""
+        soup = shutuba_scraper.get_soup(shutuba_new_format_html)
+        race_info = shutuba_scraper._parse_race_info(soup, race_id="202606010802")
+
+        assert race_info["surface"] == "ダート"
+        assert race_info["distance"] == 1200

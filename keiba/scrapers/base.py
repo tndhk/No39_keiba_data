@@ -62,8 +62,8 @@ class BaseScraper:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
 
-        # db.netkeiba.com uses EUC-JP encoding
-        if "db.netkeiba.com" in url:
+        # netkeiba.com uses EUC-JP encoding
+        if "netkeiba.com" in url:
             response.encoding = "EUC-JP"
 
         self._last_request_time = time.time()

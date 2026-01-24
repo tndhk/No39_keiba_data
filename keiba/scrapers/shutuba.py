@@ -44,7 +44,7 @@ class ShutubaScraper(BaseScraper):
         html = self.fetch(url)
         soup = self.get_soup(html)
 
-        race_info = self._parse_race_info(soup)
+        race_info = self._parse_race_info(soup, race_id)
         entries = self._parse_entries(soup)
 
         return ShutubaData(
@@ -69,11 +69,14 @@ class ShutubaScraper(BaseScraper):
         """
         return f"{self.BASE_URL}/race/shutuba.html?race_id={race_id}"
 
-    def _parse_race_info(self, soup: BeautifulSoup) -> dict:
+    def _parse_race_info(
+        self, soup: BeautifulSoup, race_id: str | None = None
+    ) -> dict:
         """Parse race information from the page.
 
         Args:
             soup: BeautifulSoup object of the shutuba page.
+            race_id: Optional race ID string for extracting year (e.g., "202606010802").
 
         Returns:
             Dictionary containing race information.
@@ -101,29 +104,42 @@ class ShutubaScraper(BaseScraper):
                 text = span.get_text(strip=True)
                 self._parse_race_data(text, race_info)
 
+        # Race data from RaceData02 (course name for new HTML format)
+        race_data02_elem = soup.find("div", class_="RaceData02")
+        if race_data02_elem:
+            text02 = race_data02_elem.get_text(strip=True)
+            self._parse_race_data02(text02, race_info)
+
+        # Fallback: Extract date from RaceList_Date if not already set
+        if "date" not in race_info:
+            self._parse_date_from_race_list(soup, race_info, race_id)
+
         return race_info
 
     def _parse_race_data(self, text: str, race_info: dict) -> None:
         """Parse race data from RaceData01 span text.
 
-        Expected format: "2026年1月8日 中山 芝2000m"
+        Supports two formats:
+        - Old format: "2026年1月8日 中山 芝2000m"
+        - New format: "09:55発走 /ダ1200m(右) / 天候:晴/ 馬場:良"
 
         Args:
             text: Text containing race data.
             race_info: Dictionary to update with parsed values.
         """
-        # Extract date
+        # Extract date (old format only)
         date_match = re.search(r"(\d{4}年\d+月\d+日)", text)
         if date_match:
             race_info["date"] = date_match.group(1)
 
-        # Extract course (racecourse name) - appears after date, before surface
+        # Extract course (racecourse name) - old format: after date, before surface
         # Pattern: after date, a Japanese word before 芝/ダ
         course_match = re.search(r"\d+日\s+(\S+)\s+[芝ダ]", text)
         if course_match:
             race_info["course"] = course_match.group(1)
 
         # Extract surface and distance
+        # Supports: "芝2000m", "ダ1200m", "ダート1800m", "/ダ1200m(右)"
         surface_dist_match = re.search(r"(芝|ダ|ダート)(\d+)m", text)
         if surface_dist_match:
             surface = surface_dist_match.group(1)
@@ -131,6 +147,80 @@ class ShutubaScraper(BaseScraper):
                 surface = "ダート"
             race_info["surface"] = surface
             race_info["distance"] = int(surface_dist_match.group(2))
+
+    def _parse_race_data02(self, text: str, race_info: dict) -> None:
+        """Parse race data from RaceData02 text.
+
+        Expected format: "1回中山8日目サラ系３歳未勝利牝[指]馬齢16頭本賞金:590,240,150,89,59万円"
+
+        Extracts course name (e.g., 中山, 東京, 阪神) if not already set.
+
+        Args:
+            text: Text containing race data from RaceData02.
+            race_info: Dictionary to update with parsed values.
+        """
+        # Skip if course is already set (from old format RaceData01)
+        if "course" in race_info:
+            return
+
+        # Extract course name from new format
+        # Pattern: "X回{競馬場名}Y日" where 競馬場名 is 2-3 chars
+        course_match = re.search(r"\d+回([^\d]{2,4})\d+日", text)
+        if course_match:
+            race_info["course"] = course_match.group(1)
+
+    def _parse_date_from_race_list(
+        self, soup: BeautifulSoup, race_info: dict, race_id: str | None
+    ) -> None:
+        """Parse date from RaceList_Date element (new HTML format).
+
+        HTML structure:
+        <div class="RaceList_Date clearfix">
+          <dl id="RaceList_DateList">
+            <dd class="Active">
+              <a title="1月24日(土)" href="...">1月24日<span>(土)</span></a>
+            </dd>
+          </dl>
+        </div>
+
+        Args:
+            soup: BeautifulSoup object of the shutuba page.
+            race_info: Dictionary to update with parsed date.
+            race_id: Optional race ID string for extracting year.
+        """
+        race_list_date = soup.find("div", class_="RaceList_Date")
+        if not race_list_date:
+            return
+
+        active_dd = race_list_date.find("dd", class_="Active")
+        if not active_dd:
+            return
+
+        link = active_dd.find("a")
+        if not link:
+            return
+
+        title = link.get("title", "")
+        if not title:
+            return
+
+        # Extract month and day from title (e.g., "1月24日(土)" -> "1月24日")
+        date_match = re.search(r"(\d+)月(\d+)日", title)
+        if not date_match:
+            return
+
+        month = date_match.group(1)
+        day = date_match.group(2)
+
+        # Determine year from race_id (first 4 characters) or use current year
+        if race_id and len(race_id) >= 4:
+            year = race_id[:4]
+        else:
+            from datetime import datetime
+
+            year = str(datetime.now().year)
+
+        race_info["date"] = f"{year}年{month}月{day}日"
 
     def _parse_entries(self, soup: BeautifulSoup) -> list[RaceEntry]:
         """Parse race entries from the page.
@@ -148,15 +238,18 @@ class ShutubaScraper(BaseScraper):
         if not table:
             return entries
 
-        # Find tbody
+        # Find tbody or use table directly
         tbody = table.find("tbody", id="Shutuba_HorseList")
         if not tbody:
             tbody = table.find("tbody")
-        if not tbody:
-            return entries
+
+        # If no tbody, search directly from table
+        if tbody:
+            rows = tbody.find_all("tr", class_="HorseList")
+        else:
+            rows = table.find_all("tr", class_="HorseList")
 
         # Parse each row
-        rows = tbody.find_all("tr", class_="HorseList")
         for row in rows:
             entry = self._parse_entry_row(row)
             if entry:
