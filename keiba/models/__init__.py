@@ -2,6 +2,7 @@
 
 from keiba.models.base import Base
 from keiba.models.breeder import Breeder
+from keiba.models.entry import RaceEntry, ShutubaData
 from keiba.models.horse import Horse
 from keiba.models.jockey import Jockey
 from keiba.models.owner import Owner
@@ -16,6 +17,8 @@ __all__ = [
     "Jockey",
     "Owner",
     "Race",
+    "RaceEntry",
     "RaceResult",
+    "ShutubaData",
     "Trainer",
 ]

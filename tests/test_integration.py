@@ -654,3 +654,324 @@ class TestEndToEndDataFlow:
             horses = session.execute(select(Horse)).scalars().all()
             # 5頭のユニークな馬
             assert len(horses) == 5
+
+
+# =============================================================================
+# Test: Shutuba to Prediction Integration (Phase 5)
+# =============================================================================
+
+
+class TestShutubaToPredicitionIntegration:
+    """出馬表から予測までの統合テスト"""
+
+    @pytest.fixture
+    def shutuba_html(self):
+        """テスト用HTMLフィクスチャを読み込む"""
+        fixture_path = Path(__file__).parent / "fixtures" / "shutuba.html"
+        return fixture_path.read_text(encoding="utf-8")
+
+    @pytest.fixture
+    def shutuba_scraper(self):
+        """ShutubaScraper インスタンスを返す"""
+        from keiba.scrapers.shutuba import ShutubaScraper
+
+        return ShutubaScraper(delay=0)
+
+    @pytest.fixture
+    def mock_repository(self):
+        """モック過去成績リポジトリを返す"""
+        from unittest.mock import Mock
+        from keiba.services.prediction_service import RaceResultRepository
+
+        mock_repo = Mock(spec=RaceResultRepository)
+        mock_repo.get_past_results.return_value = []
+        return mock_repo
+
+    def test_shutuba_to_prediction_full_flow(
+        self, shutuba_scraper, shutuba_html, mock_repository
+    ):
+        """出馬表スクレイピング -> 予測サービス -> 結果出力の全フロー"""
+        from keiba.services.prediction_service import PredictionService
+
+        # Step 1: テスト用HTMLからパース（_parse_entriesを使用）
+        soup = shutuba_scraper.get_soup(shutuba_html)
+        entries = shutuba_scraper._parse_entries(soup)
+        race_info = shutuba_scraper._parse_race_info(soup)
+
+        # 出走馬が5頭抽出されること
+        assert len(entries) == 5
+
+        # ShutubaDataを構築
+        from keiba.models.entry import ShutubaData
+
+        shutuba_data = ShutubaData(
+            race_id="202601080211",
+            race_name=race_info.get("race_name", ""),
+            race_number=race_info.get("race_number", 0),
+            course=race_info.get("course", ""),
+            distance=race_info.get("distance", 0),
+            surface=race_info.get("surface", ""),
+            date=race_info.get("date", ""),
+            entries=tuple(entries),
+        )
+
+        # Step 2: 予測を実行
+        service = PredictionService(repository=mock_repository)
+        results = service.predict_from_shutuba(shutuba_data)
+
+        # Step 3: 予測結果が全出走馬分返ること
+        assert len(results) == 5
+
+        # Step 4: 各予測結果に必要なフィールドが含まれること
+        for result in results:
+            assert hasattr(result, "horse_number")
+            assert hasattr(result, "horse_name")
+            assert hasattr(result, "horse_id")
+            assert hasattr(result, "ml_probability")
+            assert hasattr(result, "factor_scores")
+            assert hasattr(result, "total_score")
+            assert hasattr(result, "rank")
+
+            # horse_numberは1-5の範囲
+            assert 1 <= result.horse_number <= 5
+
+            # horse_idは馬データから抽出されたもの
+            assert result.horse_id.startswith("2023104")
+
+            # horse_nameは日本語を含む
+            assert "テストホース" in result.horse_name
+
+            # rankは1-5の範囲
+            assert 1 <= result.rank <= 5
+
+    def test_prediction_with_db_data(self, tmp_db, shutuba_scraper, shutuba_html):
+        """DBに既存の過去成績がある場合の予測"""
+        from keiba.services.prediction_service import (
+            PredictionService,
+            RaceResultRepository,
+        )
+        from keiba.models.entry import ShutubaData
+        from datetime import date as dt_date
+
+        # Step 1: インメモリDBにテスト用の馬と過去成績データを挿入
+        with get_session(tmp_db) as session:
+            # 馬データ
+            horse1 = Horse(
+                id="2023104001",
+                name="テストホース1",
+                sex="牡",
+                birth_year=2023,
+            )
+            horse2 = Horse(
+                id="2023104002",
+                name="テストホース2",
+                sex="牝",
+                birth_year=2023,
+            )
+            session.add_all([horse1, horse2])
+
+            # 騎手データ
+            jockey = Jockey(id="01167", name="武豊")
+            session.add(jockey)
+
+            # 調教師データ
+            trainer = Trainer(id="01088", name="友道康夫")
+            session.add(trainer)
+
+            # 過去のレースデータ
+            past_race = Race(
+                id="202512010101",
+                name="過去レース",
+                date=dt_date(2025, 12, 1),
+                course="中山",
+                race_number=1,
+                distance=2000,
+                surface="芝",
+                weather="晴",
+                track_condition="良",
+            )
+            session.add(past_race)
+
+            # 過去成績データ
+            past_result1 = RaceResult(
+                race_id="202512010101",
+                horse_id="2023104001",
+                jockey_id="01167",
+                trainer_id="01088",
+                finish_position=1,
+                bracket_number=1,
+                horse_number=1,
+                odds=3.5,
+                popularity=2,
+                weight=480,
+                weight_diff=0,
+                time="2:01.0",
+                margin="",
+            )
+            past_result2 = RaceResult(
+                race_id="202512010101",
+                horse_id="2023104002",
+                jockey_id="01167",
+                trainer_id="01088",
+                finish_position=3,
+                bracket_number=2,
+                horse_number=2,
+                odds=5.0,
+                popularity=3,
+                weight=450,
+                weight_diff=-2,
+                time="2:01.5",
+                margin="3",
+            )
+            session.add_all([past_result1, past_result2])
+
+        # Step 2: DBベースのリポジトリを作成
+        class DBRepository:
+            """テスト用DBリポジトリ"""
+
+            def __init__(self, engine):
+                self._engine = engine
+
+            def get_past_results(
+                self, horse_id: str, before_date: str, limit: int = 20
+            ) -> list:
+                with get_session(self._engine) as session:
+                    results = (
+                        session.execute(
+                            select(RaceResult).where(RaceResult.horse_id == horse_id)
+                        )
+                        .scalars()
+                        .all()
+                    )
+                    # 辞書形式に変換
+                    return [
+                        {
+                            "horse_id": r.horse_id,
+                            "finish_position": r.finish_position,
+                            "total_runners": 10,
+                            "race_date": "2025-12-01",
+                            "course": "中山",
+                            "distance": 2000,
+                            "surface": "芝",
+                            "time_index": 100.0,
+                            "last_3f": 34.0,
+                            "odds": r.odds,
+                            "popularity": r.popularity,
+                        }
+                        for r in results[:limit]
+                    ]
+
+        repository = DBRepository(tmp_db)
+
+        # Step 3: 出馬表データを作成
+        soup = shutuba_scraper.get_soup(shutuba_html)
+        entries = shutuba_scraper._parse_entries(soup)
+        race_info = shutuba_scraper._parse_race_info(soup)
+
+        shutuba_data = ShutubaData(
+            race_id="202601080211",
+            race_name=race_info.get("race_name", ""),
+            race_number=race_info.get("race_number", 0),
+            course=race_info.get("course", ""),
+            distance=race_info.get("distance", 0),
+            surface=race_info.get("surface", ""),
+            date="2026年1月8日",
+            entries=tuple(entries),
+        )
+
+        # Step 4: 予測を実行
+        service = PredictionService(repository=repository)
+        results = service.predict_from_shutuba(shutuba_data)
+
+        # Step 5: 予測結果を検証
+        assert len(results) == 5
+
+        # DBに過去成績がある馬を取得
+        horse1_result = next(
+            (r for r in results if r.horse_id == "2023104001"), None
+        )
+        horse2_result = next(
+            (r for r in results if r.horse_id == "2023104002"), None
+        )
+
+        # 過去成績がある馬は因子スコアが計算されている
+        assert horse1_result is not None
+        assert horse1_result.factor_scores is not None
+        # 全ての因子スコアが含まれていること
+        expected_factors = [
+            "past_results",
+            "course_fit",
+            "time_index",
+            "last_3f",
+            "popularity",
+            "pedigree",
+            "running_style",
+        ]
+        for factor in expected_factors:
+            assert factor in horse1_result.factor_scores
+
+        # 過去成績がある馬はスコアが計算されていること
+        # (少なくともNone以外の値を持つ因子があること)
+        has_non_none_score = any(
+            score is not None for score in horse1_result.factor_scores.values()
+        )
+        assert has_non_none_score, "過去成績がある馬は因子スコアが計算されているべき"
+
+    def test_prediction_without_db_data(self, tmp_db, shutuba_scraper, shutuba_html):
+        """DBに過去成績がない場合（新馬戦相当）の予測"""
+        from keiba.services.prediction_service import PredictionService
+        from keiba.models.entry import ShutubaData
+
+        # Step 1: 空のDBでリポジトリを作成
+        class EmptyDBRepository:
+            """空のDBリポジトリ"""
+
+            def get_past_results(
+                self, horse_id: str, before_date: str, limit: int = 20
+            ) -> list:
+                return []
+
+        repository = EmptyDBRepository()
+
+        # Step 2: 出馬表データを作成
+        soup = shutuba_scraper.get_soup(shutuba_html)
+        entries = shutuba_scraper._parse_entries(soup)
+        race_info = shutuba_scraper._parse_race_info(soup)
+
+        shutuba_data = ShutubaData(
+            race_id="202601080211",
+            race_name=race_info.get("race_name", ""),
+            race_number=race_info.get("race_number", 0),
+            course=race_info.get("course", ""),
+            distance=race_info.get("distance", 0),
+            surface=race_info.get("surface", ""),
+            date="2026年1月8日",
+            entries=tuple(entries),
+        )
+
+        # Step 3: 予測を実行
+        service = PredictionService(repository=repository)
+        results = service.predict_from_shutuba(shutuba_data)
+
+        # Step 4: 予測結果を検証
+        assert len(results) == 5
+
+        for result in results:
+            # 因子スコアがNoneでも動作すること
+            assert result.factor_scores is not None
+
+            # 全ての因子スコアがNoneであること（新馬なので過去成績なし）
+            for factor_name, score in result.factor_scores.items():
+                assert score is None, (
+                    f"Factor '{factor_name}' should be None for new horse, "
+                    f"got {score}"
+                )
+
+            # ML確率が0.0であること
+            assert result.ml_probability == 0.0
+
+            # total_scoreもNoneであること
+            assert result.total_score is None
+
+            # ランクは付与されること
+            assert 1 <= result.rank <= 5

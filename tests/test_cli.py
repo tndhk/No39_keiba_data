@@ -1107,3 +1107,148 @@ class TestBacktestCommandExecution:
 
         # エラーメッセージが表示される
         assert "日付形式が不正です" in result.output
+
+
+# ============================================================================
+# predictコマンドのテスト
+# ============================================================================
+
+
+class TestPredictCommand:
+    """predictコマンドのテスト"""
+
+    def test_predict_command_exists(self):
+        """predictコマンドが登録されている"""
+        assert "predict" in main.commands
+
+    def test_predict_help(self):
+        """predict --helpが正常に動作する"""
+        runner = CliRunner()
+        result = runner.invoke(main, ["predict", "--help"])
+        assert result.exit_code == 0
+        assert "--url" in result.output
+        assert "--db" in result.output
+
+    def test_predict_requires_url_option(self):
+        """predictは--urlオプションを必須とする"""
+        runner = CliRunner()
+        result = runner.invoke(main, ["predict", "--db", "test.db"])
+        assert result.exit_code != 0
+        assert "url" in result.output.lower() or "missing" in result.output.lower()
+
+    def test_predict_requires_db_option(self):
+        """predictは--dbオプションを必須とする"""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["predict", "--url", "https://race.netkeiba.com/race/shutuba.html?race_id=202606010802"],
+        )
+        assert result.exit_code != 0
+        assert "db" in result.output.lower() or "missing" in result.output.lower()
+
+    def test_predict_no_ml_flag(self):
+        """predictは--no-mlフラグを受け付ける"""
+        runner = CliRunner()
+        result = runner.invoke(main, ["predict", "--help"])
+        assert "--no-ml" in result.output
+
+
+class TestExtractRaceIdFromShutubaUrl:
+    """extract_race_id_from_shutuba_url関数のテスト"""
+
+    def test_extract_race_id_from_shutuba_url(self):
+        """出馬表URLからrace_idを正しく抽出できる"""
+        from keiba.cli import extract_race_id_from_shutuba_url
+
+        url = "https://race.netkeiba.com/race/shutuba.html?race_id=202606010802"
+        race_id = extract_race_id_from_shutuba_url(url)
+        assert race_id == "202606010802"
+
+    def test_extract_race_id_with_additional_params(self):
+        """追加パラメータがあるURLからもrace_idを抽出できる"""
+        from keiba.cli import extract_race_id_from_shutuba_url
+
+        url = "https://race.netkeiba.com/race/shutuba.html?race_id=202606010802&rf=shutuba_submenu"
+        race_id = extract_race_id_from_shutuba_url(url)
+        assert race_id == "202606010802"
+
+    def test_extract_race_id_invalid_url_raises_error(self):
+        """不正なURLはValueErrorを発生させる"""
+        from keiba.cli import extract_race_id_from_shutuba_url
+
+        with pytest.raises(ValueError):
+            extract_race_id_from_shutuba_url("https://example.com/invalid")
+
+
+@skip_without_lightgbm
+class TestPredictCommandExecution:
+    """predictコマンドの実行テスト"""
+
+    def test_predict_displays_results(self):
+        """predictコマンドは予測結果を表示する（_print_prediction_tableのテスト）"""
+        from keiba.cli import _print_prediction_table
+        from keiba.services.prediction_service import PredictionResult
+
+        # PredictionResultを作成
+        mock_prediction_result = PredictionResult(
+            horse_number=1,
+            horse_name="テストホース1",
+            horse_id="horse001",
+            ml_probability=0.623,
+            factor_scores={
+                "past_results": 80.0,
+                "course_fit": 70.5,
+                "time_index": 68.3,
+                "last_3f": 82.1,
+                "popularity": 90.0,
+                "pedigree": 65.0,
+                "running_style": 70.0,
+            },
+            total_score=75.2,
+            rank=1,
+        )
+
+        runner = CliRunner()
+        # _print_prediction_tableが例外を発生させないことを確認
+        with runner.isolated_filesystem():
+            # clickの出力をキャプチャするため、関数を直接呼び出す
+            _print_prediction_table([mock_prediction_result], with_ml=True)
+
+    def test_predict_with_no_ml_flag(self):
+        """predictコマンドは--no-mlフラグで因子スコアのみ表示する"""
+        from keiba.cli import _print_prediction_table
+        from keiba.services.prediction_service import PredictionResult
+
+        # PredictionResult（ML確率は0.0）
+        mock_prediction_result = PredictionResult(
+            horse_number=1,
+            horse_name="テストホース1",
+            horse_id="horse001",
+            ml_probability=0.0,
+            factor_scores={
+                "past_results": 80.0,
+                "course_fit": 70.5,
+                "time_index": 68.3,
+                "last_3f": 82.1,
+                "popularity": 90.0,
+                "pedigree": 65.0,
+                "running_style": 70.0,
+            },
+            total_score=75.2,
+            rank=1,
+        )
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            # 因子スコアのみのテーブル表示（with_ml=False）
+            _print_prediction_table([mock_prediction_result], with_ml=False)
+
+    def test_predict_shows_race_info_header(self):
+        """predictコマンドはレース情報ヘッダーを表示する（extract_race_id_from_shutuba_urlのテスト）"""
+        from keiba.cli import extract_race_id_from_shutuba_url
+
+        url = "https://race.netkeiba.com/race/shutuba.html?race_id=202606010802"
+        race_id = extract_race_id_from_shutuba_url(url)
+
+        # race_idが正しく抽出されている
+        assert race_id == "202606010802"

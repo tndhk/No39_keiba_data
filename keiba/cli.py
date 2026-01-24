@@ -33,6 +33,21 @@ def extract_race_id_from_url(url: str) -> str:
     raise ValueError(f"Invalid race URL: {url}")
 
 
+def extract_race_id_from_shutuba_url(url: str) -> str:
+    """出馬表URLからレースIDを抽出する
+
+    Args:
+        url: 出馬表URL（例: https://race.netkeiba.com/race/shutuba.html?race_id=202606010802）
+
+    Returns:
+        レースID（例: 202606010802）
+    """
+    match = re.search(r"race_id=(\d+)", url)
+    if match:
+        return match.group(1)
+    raise ValueError(f"Invalid shutuba URL: {url}")
+
+
 def parse_race_date(date_str: str) -> date:
     """レース日付文字列をdateオブジェクトに変換する
 
@@ -1091,3 +1106,262 @@ def migrate_grades(db: str):
     click.echo("=" * 50)
     click.echo("完了")
     click.echo(f"  更新したレース: {total_updated}件")
+
+
+class SQLAlchemyRaceResultRepository:
+    """SQLAlchemyを使用した過去成績リポジトリ"""
+
+    def __init__(self, session):
+        """初期化
+
+        Args:
+            session: SQLAlchemyセッション
+        """
+        self.session = session
+
+    def get_past_results(
+        self, horse_id: str, before_date: str, limit: int = 20
+    ) -> list[dict]:
+        """指定日より前の過去成績を取得
+
+        Args:
+            horse_id: 馬ID
+            before_date: この日付より前の成績を取得（YYYY年M月D日形式）
+            limit: 最大取得件数
+
+        Returns:
+            過去成績のリスト
+        """
+        # 日付を解析
+        try:
+            target_date = parse_race_date(before_date)
+        except ValueError:
+            # 解析失敗時は空リストを返す
+            return []
+
+        # 過去のレース結果を取得
+        past_results_query = (
+            self.session.query(RaceResult, Race)
+            .join(Race, RaceResult.race_id == Race.id)
+            .filter(RaceResult.horse_id == horse_id)
+            .filter(Race.date < target_date)
+            .order_by(Race.date.desc())
+            .limit(limit)
+        )
+
+        results = []
+        for race_result, race_info in past_results_query:
+            # 同じレースの出走頭数を取得
+            total_runners = (
+                self.session.query(RaceResult)
+                .filter(RaceResult.race_id == race_info.id)
+                .count()
+            )
+
+            results.append(
+                {
+                    "horse_id": race_result.horse_id,
+                    "finish_position": race_result.finish_position,
+                    "total_runners": total_runners,
+                    "surface": race_info.surface,
+                    "distance": race_info.distance,
+                    "time": race_result.time,
+                    "last_3f": race_result.last_3f,
+                    "race_date": race_info.date,
+                    "odds": race_result.odds,
+                    "popularity": race_result.popularity,
+                    "passing_order": race_result.passing_order,
+                    "course": race_info.course,
+                }
+            )
+
+        return results
+
+
+@main.command()
+@click.option("--url", required=True, type=str, help="出馬表ページURL")
+@click.option("--db", required=True, type=click.Path(), help="DBファイルパス")
+@click.option(
+    "--no-ml", is_flag=True, default=False, help="ML予測をスキップし因子スコアのみ表示"
+)
+def predict(url: str, db: str, no_ml: bool):
+    """出馬表URLから予測を実行"""
+    from keiba.scrapers.shutuba import ShutubaScraper
+    from keiba.services.prediction_service import PredictionService
+
+    # URLからrace_idを抽出
+    try:
+        race_id = extract_race_id_from_shutuba_url(url)
+    except ValueError as e:
+        click.echo(f"URLエラー: {e}")
+        return
+
+    click.echo(f"出馬表予測: {race_id}")
+
+    # DBに接続
+    engine = get_engine(db)
+
+    # 出馬表データを取得
+    scraper = ShutubaScraper()
+    try:
+        shutuba_data = scraper.fetch_shutuba(race_id)
+    except Exception as e:
+        click.echo(f"出馬表取得エラー: {e}")
+        return
+
+    # レース情報ヘッダーを表示
+    click.echo(
+        f"{shutuba_data.date} {shutuba_data.course} {shutuba_data.race_number}R "
+        f"{shutuba_data.surface}{shutuba_data.distance}m"
+    )
+    click.echo(f"{shutuba_data.race_name}")
+    click.echo("=" * 80)
+
+    with get_session(engine) as session:
+        # リポジトリを作成
+        repository = SQLAlchemyRaceResultRepository(session)
+
+        # モデルパスの設定（ML予測を使用する場合）
+        model_path = None if no_ml else None  # 現状はモデルパス未指定
+
+        # PredictionServiceで予測を実行
+        service = PredictionService(repository=repository, model_path=model_path)
+        predictions = service.predict_from_shutuba(shutuba_data)
+
+        # 結果を表形式で表示
+        _print_prediction_table(predictions, with_ml=not no_ml)
+
+
+def _print_prediction_table(predictions: list, with_ml: bool) -> None:
+    """予測結果テーブルを表示する
+
+    Args:
+        predictions: PredictionResultのリスト
+        with_ml: ML予測を含むかどうか
+    """
+    if with_ml:
+        # ML予測あり
+        click.echo(
+            f"{'順位':^4} | {'馬番':^4} | {'馬名':^12} | {'ML確率':^8} | "
+            f"{'総合':^6} | {'過去':^6} | {'適性':^6} | {'指数':^6} | {'上り':^6} | "
+            f"{'人気':^6} | {'血統':^6} | {'脚質':^6}"
+        )
+        click.echo("-" * 110)
+
+        for pred in predictions:
+            rank = f"{pred.rank}"
+            prob = f"{pred.ml_probability:.1%}" if pred.ml_probability > 0 else "-"
+            total = f"{pred.total_score:.1f}" if pred.total_score is not None else "-"
+            past = (
+                f"{pred.factor_scores.get('past_results', 0):.1f}"
+                if pred.factor_scores.get("past_results") is not None
+                else "-"
+            )
+            course = (
+                f"{pred.factor_scores.get('course_fit', 0):.1f}"
+                if pred.factor_scores.get("course_fit") is not None
+                else "-"
+            )
+            time_idx = (
+                f"{pred.factor_scores.get('time_index', 0):.1f}"
+                if pred.factor_scores.get("time_index") is not None
+                else "-"
+            )
+            last_3f = (
+                f"{pred.factor_scores.get('last_3f', 0):.1f}"
+                if pred.factor_scores.get("last_3f") is not None
+                else "-"
+            )
+            pop = (
+                f"{pred.factor_scores.get('popularity', 0):.1f}"
+                if pred.factor_scores.get("popularity") is not None
+                else "-"
+            )
+            pedigree = (
+                f"{pred.factor_scores.get('pedigree', 0):.1f}"
+                if pred.factor_scores.get("pedigree") is not None
+                else "-"
+            )
+            running = (
+                f"{pred.factor_scores.get('running_style', 0):.1f}"
+                if pred.factor_scores.get("running_style") is not None
+                else "-"
+            )
+
+            # 馬名を12文字に切り詰め
+            horse_name = (
+                pred.horse_name[:12]
+                if len(pred.horse_name) > 12
+                else pred.horse_name
+            )
+
+            click.echo(
+                f"{rank:^4} | {pred.horse_number:^4} | {horse_name:^12} | "
+                f"{prob:^8} | {total:^6} | {past:^6} | {course:^6} | {time_idx:^6} | "
+                f"{last_3f:^6} | {pop:^6} | {pedigree:^6} | {running:^6}"
+            )
+    else:
+        # 因子スコアのみ（総合スコア順でソート）
+        sorted_predictions = sorted(
+            predictions,
+            key=lambda x: x.total_score if x.total_score is not None else 0,
+            reverse=True,
+        )
+
+        click.echo(
+            f"{'順位':^4} | {'馬番':^4} | {'馬名':^12} | "
+            f"{'総合':^6} | {'過去':^6} | {'適性':^6} | {'指数':^6} | {'上り':^6} | "
+            f"{'人気':^6} | {'血統':^6} | {'脚質':^6}"
+        )
+        click.echo("-" * 100)
+
+        for rank, pred in enumerate(sorted_predictions, 1):
+            total = f"{pred.total_score:.1f}" if pred.total_score is not None else "-"
+            past = (
+                f"{pred.factor_scores.get('past_results', 0):.1f}"
+                if pred.factor_scores.get("past_results") is not None
+                else "-"
+            )
+            course = (
+                f"{pred.factor_scores.get('course_fit', 0):.1f}"
+                if pred.factor_scores.get("course_fit") is not None
+                else "-"
+            )
+            time_idx = (
+                f"{pred.factor_scores.get('time_index', 0):.1f}"
+                if pred.factor_scores.get("time_index") is not None
+                else "-"
+            )
+            last_3f = (
+                f"{pred.factor_scores.get('last_3f', 0):.1f}"
+                if pred.factor_scores.get("last_3f") is not None
+                else "-"
+            )
+            pop = (
+                f"{pred.factor_scores.get('popularity', 0):.1f}"
+                if pred.factor_scores.get("popularity") is not None
+                else "-"
+            )
+            pedigree = (
+                f"{pred.factor_scores.get('pedigree', 0):.1f}"
+                if pred.factor_scores.get("pedigree") is not None
+                else "-"
+            )
+            running = (
+                f"{pred.factor_scores.get('running_style', 0):.1f}"
+                if pred.factor_scores.get("running_style") is not None
+                else "-"
+            )
+
+            # 馬名を12文字に切り詰め
+            horse_name = (
+                pred.horse_name[:12]
+                if len(pred.horse_name) > 12
+                else pred.horse_name
+            )
+
+            click.echo(
+                f"{rank:^4} | {pred.horse_number:^4} | {horse_name:^12} | "
+                f"{total:^6} | {past:^6} | {course:^6} | {time_idx:^6} | "
+                f"{last_3f:^6} | {pop:^6} | {pedigree:^6} | {running:^6}"
+            )
