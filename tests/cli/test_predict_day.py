@@ -607,3 +607,335 @@ class TestPredictDayNoMl:
         # PredictionServiceがmodel_path=Noneで初期化されることを確認
         call_kwargs = mock_prediction_service.call_args.kwargs
         assert call_kwargs.get("model_path") is None
+
+
+class TestPredictDayModelAutoDetection:
+    """predict-dayコマンドのモデル自動検出テスト"""
+
+    @patch("keiba.cli.find_latest_model")
+    @patch("keiba.cli._save_predictions_markdown")
+    @patch("keiba.services.prediction_service.PredictionService")
+    @patch("keiba.scrapers.shutuba.ShutubaScraper")
+    @patch("keiba.cli.RaceListScraper")
+    @patch("keiba.cli.get_session")
+    @patch("keiba.cli.get_engine")
+    def test_predict_day_uses_model_if_exists(
+        self,
+        mock_get_engine,
+        mock_get_session,
+        mock_race_list_scraper,
+        mock_shutuba_scraper,
+        mock_prediction_service,
+        mock_save_markdown,
+        mock_find_latest_model,
+    ):
+        """モデルファイルがある場合はそのパスを使用する"""
+        # Setup mocks
+        mock_engine = MagicMock()
+        mock_get_engine.return_value = mock_engine
+        mock_session = MagicMock()
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_list_scraper = MagicMock()
+        mock_list_scraper.fetch_race_urls.return_value = [
+            "https://db.netkeiba.com/race/202606010801/",
+        ]
+        mock_race_list_scraper.return_value = mock_list_scraper
+
+        mock_shutuba = MagicMock()
+        mock_shutuba.fetch_shutuba.return_value = MagicMock(
+            race_id="202606010801",
+            race_name="テストレース",
+            race_number=1,
+            course="中山",
+            distance=2000,
+            surface="芝",
+            date="2026年1月24日",
+            entries=(),
+        )
+        mock_shutuba_scraper.return_value = mock_shutuba
+
+        mock_service = MagicMock()
+        mock_service.predict_from_shutuba.return_value = []
+        mock_prediction_service.return_value = mock_service
+
+        # モデルパスが見つかるように設定
+        mock_find_latest_model.return_value = "/path/to/data/models/model.joblib"
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main,
+                [
+                    "predict-day",
+                    "--date",
+                    "2026-01-24",
+                    "--venue",
+                    "中山",
+                    "--db",
+                    "data/test.db",
+                ],
+            )
+
+        # PredictionServiceがモデルパスを持って初期化されることを確認
+        call_kwargs = mock_prediction_service.call_args.kwargs
+        assert call_kwargs.get("model_path") == "/path/to/data/models/model.joblib"
+
+    @patch("keiba.cli.find_latest_model")
+    @patch("keiba.cli._save_predictions_markdown")
+    @patch("keiba.services.prediction_service.PredictionService")
+    @patch("keiba.scrapers.shutuba.ShutubaScraper")
+    @patch("keiba.cli.RaceListScraper")
+    @patch("keiba.cli.get_session")
+    @patch("keiba.cli.get_engine")
+    def test_predict_day_works_without_model(
+        self,
+        mock_get_engine,
+        mock_get_session,
+        mock_race_list_scraper,
+        mock_shutuba_scraper,
+        mock_prediction_service,
+        mock_save_markdown,
+        mock_find_latest_model,
+    ):
+        """モデルファイルがない場合でもエラーなく動作する"""
+        # Setup mocks
+        mock_engine = MagicMock()
+        mock_get_engine.return_value = mock_engine
+        mock_session = MagicMock()
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_list_scraper = MagicMock()
+        mock_list_scraper.fetch_race_urls.return_value = [
+            "https://db.netkeiba.com/race/202606010801/",
+        ]
+        mock_race_list_scraper.return_value = mock_list_scraper
+
+        mock_shutuba = MagicMock()
+        mock_shutuba.fetch_shutuba.return_value = MagicMock(
+            race_id="202606010801",
+            race_name="テストレース",
+            race_number=1,
+            course="中山",
+            distance=2000,
+            surface="芝",
+            date="2026年1月24日",
+            entries=(),
+        )
+        mock_shutuba_scraper.return_value = mock_shutuba
+
+        mock_service = MagicMock()
+        mock_service.predict_from_shutuba.return_value = []
+        mock_prediction_service.return_value = mock_service
+
+        # モデルパスが見つからないように設定
+        mock_find_latest_model.return_value = None
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main,
+                [
+                    "predict-day",
+                    "--date",
+                    "2026-01-24",
+                    "--venue",
+                    "中山",
+                    "--db",
+                    "data/test.db",
+                ],
+            )
+
+        # エラーなく完了すること
+        assert result.exit_code == 0
+        # PredictionServiceがmodel_path=Noneで初期化されることを確認
+        call_kwargs = mock_prediction_service.call_args.kwargs
+        assert call_kwargs.get("model_path") is None
+
+
+class TestPredictCommandModelAutoDetection:
+    """predictコマンドのモデル自動検出テスト"""
+
+    @patch("keiba.cli.find_latest_model")
+    @patch("keiba.services.prediction_service.PredictionService")
+    @patch("keiba.scrapers.shutuba.ShutubaScraper")
+    @patch("keiba.cli.get_session")
+    @patch("keiba.cli.get_engine")
+    def test_predict_uses_model_if_exists(
+        self,
+        mock_get_engine,
+        mock_get_session,
+        mock_shutuba_scraper,
+        mock_prediction_service,
+        mock_find_latest_model,
+    ):
+        """predictコマンドでモデルファイルがある場合はそのパスを使用する"""
+        # Setup mocks
+        mock_engine = MagicMock()
+        mock_get_engine.return_value = mock_engine
+        mock_session = MagicMock()
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_shutuba = MagicMock()
+        mock_shutuba_data = MagicMock(
+            race_id="202606010801",
+            race_name="テストレース",
+            race_number=1,
+            course="中山",
+            distance=2000,
+            surface="芝",
+            date="2026年1月24日",
+            entries=(),
+        )
+        mock_shutuba.fetch_shutuba.return_value = mock_shutuba_data
+        mock_shutuba_scraper.return_value = mock_shutuba
+
+        mock_service = MagicMock()
+        mock_service.predict_from_shutuba.return_value = []
+        mock_prediction_service.return_value = mock_service
+
+        # モデルパスが見つかるように設定
+        mock_find_latest_model.return_value = "/path/to/data/models/model.joblib"
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main,
+                [
+                    "predict",
+                    "--url",
+                    "https://race.netkeiba.com/race/shutuba.html?race_id=202606010801",
+                    "--db",
+                    "data/test.db",
+                ],
+            )
+
+        # PredictionServiceがモデルパスを持って初期化されることを確認
+        call_kwargs = mock_prediction_service.call_args.kwargs
+        assert call_kwargs.get("model_path") == "/path/to/data/models/model.joblib"
+
+    @patch("keiba.cli.find_latest_model")
+    @patch("keiba.services.prediction_service.PredictionService")
+    @patch("keiba.scrapers.shutuba.ShutubaScraper")
+    @patch("keiba.cli.get_session")
+    @patch("keiba.cli.get_engine")
+    def test_predict_works_without_model(
+        self,
+        mock_get_engine,
+        mock_get_session,
+        mock_shutuba_scraper,
+        mock_prediction_service,
+        mock_find_latest_model,
+    ):
+        """predictコマンドでモデルファイルがない場合でもエラーなく動作する"""
+        # Setup mocks
+        mock_engine = MagicMock()
+        mock_get_engine.return_value = mock_engine
+        mock_session = MagicMock()
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_shutuba = MagicMock()
+        mock_shutuba_data = MagicMock(
+            race_id="202606010801",
+            race_name="テストレース",
+            race_number=1,
+            course="中山",
+            distance=2000,
+            surface="芝",
+            date="2026年1月24日",
+            entries=(),
+        )
+        mock_shutuba.fetch_shutuba.return_value = mock_shutuba_data
+        mock_shutuba_scraper.return_value = mock_shutuba
+
+        mock_service = MagicMock()
+        mock_service.predict_from_shutuba.return_value = []
+        mock_prediction_service.return_value = mock_service
+
+        # モデルパスが見つからないように設定
+        mock_find_latest_model.return_value = None
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main,
+                [
+                    "predict",
+                    "--url",
+                    "https://race.netkeiba.com/race/shutuba.html?race_id=202606010801",
+                    "--db",
+                    "data/test.db",
+                ],
+            )
+
+        # エラーなく完了すること
+        assert result.exit_code == 0
+        # PredictionServiceがmodel_path=Noneで初期化されることを確認
+        call_kwargs = mock_prediction_service.call_args.kwargs
+        assert call_kwargs.get("model_path") is None
+
+    @patch("keiba.cli.find_latest_model")
+    @patch("keiba.services.prediction_service.PredictionService")
+    @patch("keiba.scrapers.shutuba.ShutubaScraper")
+    @patch("keiba.cli.get_session")
+    @patch("keiba.cli.get_engine")
+    def test_predict_no_ml_flag_skips_model(
+        self,
+        mock_get_engine,
+        mock_get_session,
+        mock_shutuba_scraper,
+        mock_prediction_service,
+        mock_find_latest_model,
+    ):
+        """predictコマンドの--no-mlフラグでモデル検索をスキップする"""
+        # Setup mocks
+        mock_engine = MagicMock()
+        mock_get_engine.return_value = mock_engine
+        mock_session = MagicMock()
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_shutuba = MagicMock()
+        mock_shutuba_data = MagicMock(
+            race_id="202606010801",
+            race_name="テストレース",
+            race_number=1,
+            course="中山",
+            distance=2000,
+            surface="芝",
+            date="2026年1月24日",
+            entries=(),
+        )
+        mock_shutuba.fetch_shutuba.return_value = mock_shutuba_data
+        mock_shutuba_scraper.return_value = mock_shutuba
+
+        mock_service = MagicMock()
+        mock_service.predict_from_shutuba.return_value = []
+        mock_prediction_service.return_value = mock_service
+
+        # モデルパスがあっても
+        mock_find_latest_model.return_value = "/path/to/data/models/model.joblib"
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main,
+                [
+                    "predict",
+                    "--url",
+                    "https://race.netkeiba.com/race/shutuba.html?race_id=202606010801",
+                    "--db",
+                    "data/test.db",
+                    "--no-ml",
+                ],
+            )
+
+        # --no-mlの場合はfind_latest_modelは呼ばれない
+        mock_find_latest_model.assert_not_called()
+        # PredictionServiceがmodel_path=Noneで初期化されることを確認
+        call_kwargs = mock_prediction_service.call_args.kwargs
+        assert call_kwargs.get("model_path") is None

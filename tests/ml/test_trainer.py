@@ -151,3 +151,29 @@ class TestTrainer:
         assert trainer._params["num_leaves"] == 31
         assert trainer._params["learning_rate"] == 0.05
         assert trainer._params["n_estimators"] == 100
+
+    def test_save_model_creates_file(self, tmp_path):
+        """学習後にsave_modelでファイルが作成されること"""
+        trainer = Trainer()
+
+        # ダミーの学習データ
+        np.random.seed(42)
+        X = np.random.rand(100, 19)
+        y = np.random.randint(0, 2, 100)
+
+        trainer.train(X, y)
+
+        # モデルを保存
+        model_path = tmp_path / "models" / "test_model.joblib"
+        trainer.save_model(str(model_path))
+
+        # ファイルが作成されていること
+        assert model_path.exists()
+        assert model_path.stat().st_size > 0
+
+    def test_save_model_without_training_raises_error(self):
+        """未学習時にsave_modelを呼ぶとValueErrorが発生すること"""
+        trainer = Trainer()
+
+        with pytest.raises(ValueError, match="モデルが学習されていません"):
+            trainer.save_model("/tmp/test_model.joblib")

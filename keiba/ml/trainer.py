@@ -161,3 +161,29 @@ class Trainer:
             raise ValueError("モデルが学習されていません")
 
         return self.model.feature_importances_
+
+    def save_model(self, path: str) -> None:
+        """学習済みモデルをファイルに保存する
+
+        Args:
+            path: 保存先のファイルパス
+
+        Raises:
+            ValueError: モデルが未学習の場合、または無効なパス
+            IOError: ファイル保存に失敗した場合
+        """
+        if self.model is None:
+            raise ValueError("モデルが学習されていません")
+
+        if not path or not isinstance(path, str):
+            raise ValueError("有効なファイルパスを指定してください")
+
+        import joblib
+        from pathlib import Path
+
+        try:
+            model_path = Path(path)
+            model_path.parent.mkdir(parents=True, exist_ok=True)
+            joblib.dump(self.model, str(model_path))
+        except (OSError, IOError, PermissionError) as e:
+            raise IOError(f"モデルの保存に失敗しました: {e}")
