@@ -23,6 +23,7 @@ htmlcov/
 
 # Project
 data/*.db
+data/models/
 *.log
 
 # OS
