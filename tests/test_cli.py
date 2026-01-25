@@ -1205,6 +1205,7 @@ class TestPredictCommandExecution:
                 "running_style": 70.0,
             },
             total_score=75.2,
+            combined_score=75.5,
             rank=1,
         )
 
@@ -1235,6 +1236,7 @@ class TestPredictCommandExecution:
                 "running_style": 70.0,
             },
             total_score=75.2,
+            combined_score=75.5,
             rank=1,
         )
 

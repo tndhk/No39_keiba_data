@@ -612,8 +612,8 @@ class TestMarkdownFormatValidation:
         assert "生成日時:" in content
         assert "## 1R テストレース" in content
         assert "芝2000m" in content
-        assert "| 順位 | 馬番 | 馬名 | ML確率 | 総合 |" in content
-        assert "| 1 | 5 | テストホース | 65.0% | 75.5 |" in content
+        assert "| 順位 | 馬番 | 馬名 | ML確率 | 複合 | 総合 |" in content
+        assert "| 1 | 5 | テストホース | 65.0% | - | 75.5 |" in content
 
     def test_review_markdown_format_is_valid(self, tmp_path):
         """検証結果のMarkdownフォーマットが正しい"""

@@ -674,3 +674,1032 @@ class TestReviewDayPredictionFileNotFound:
         assert result.exit_code != 0
         # 予測データがないエラーメッセージを確認
         assert "予測データがありません" in result.output or "予測ファイル" in result.output
+
+
+class TestCalculateUmarenSimulation:
+    """_calculate_umaren_simulation関数のテスト"""
+
+    def test_generates_three_combinations_from_top3(self):
+        """予測上位3頭から3組の馬連を生成する: (1,2), (1,3), (2,3)"""
+        from keiba.cli import _calculate_umaren_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                }
+            ]
+        }
+        # 馬連は (5,3), (5,8), (3,8) の3組
+        # horse_numbers [5, 3] が的中
+        umaren_payouts = {
+            1: {"horse_numbers": [5, 3], "payout": 2470},
+        }
+
+        result = _calculate_umaren_simulation(predictions, umaren_payouts)
+
+        # 3点買いなので投資額は300円
+        assert result["investment"] == 300
+        assert result["total_races"] == 1
+
+    def test_hit_when_combination_matches(self):
+        """馬連ペアがset()として一致すれば的中"""
+        from keiba.cli import _calculate_umaren_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                }
+            ]
+        }
+        # (5, 3) が的中（順序関係なく）
+        umaren_payouts = {
+            1: {"horse_numbers": [3, 5], "payout": 2470},  # 順序が逆でも的中
+        }
+
+        result = _calculate_umaren_simulation(predictions, umaren_payouts)
+
+        assert result["hits"] == 1
+        assert result["payout"] == 2470
+
+    def test_miss_when_combination_not_in_predictions(self):
+        """馬連ペアが予測3組に含まれない場合は外れ"""
+        from keiba.cli import _calculate_umaren_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                }
+            ]
+        }
+        # 7-9 は予測外
+        umaren_payouts = {
+            1: {"horse_numbers": [7, 9], "payout": 5000},
+        }
+
+        result = _calculate_umaren_simulation(predictions, umaren_payouts)
+
+        assert result["hits"] == 0
+        assert result["payout"] == 0
+
+    def test_payout_added_once_per_hit(self):
+        """的中時は払戻金を1回だけ加算（3点のうち1点のみ的中）"""
+        from keiba.cli import _calculate_umaren_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                }
+            ]
+        }
+        umaren_payouts = {
+            1: {"horse_numbers": [5, 3], "payout": 2470},
+        }
+
+        result = _calculate_umaren_simulation(predictions, umaren_payouts)
+
+        # 払戻金は2470円のみ（複数回加算されない）
+        assert result["payout"] == 2470
+
+    def test_calculates_hit_rate(self):
+        """的中率を計算する"""
+        from keiba.cli import _calculate_umaren_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                },
+                {
+                    "race_number": 2,
+                    "predictions": [
+                        {"horse_number": 2, "rank": 1},
+                        {"horse_number": 7, "rank": 2},
+                        {"horse_number": 1, "rank": 3},
+                    ],
+                },
+            ]
+        }
+        umaren_payouts = {
+            1: {"horse_numbers": [5, 3], "payout": 2470},  # 的中
+            2: {"horse_numbers": [9, 10], "payout": 3000},  # 外れ
+        }
+
+        result = _calculate_umaren_simulation(predictions, umaren_payouts)
+
+        assert result["hits"] == 1
+        assert result["total_races"] == 2
+        assert result["hit_rate"] == 0.5
+
+    def test_calculates_return_rate(self):
+        """回収率を計算する"""
+        from keiba.cli import _calculate_umaren_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                }
+            ]
+        }
+        umaren_payouts = {
+            1: {"horse_numbers": [5, 3], "payout": 2470},
+        }
+
+        result = _calculate_umaren_simulation(predictions, umaren_payouts)
+
+        # 投資額300円、払戻2470円 = 回収率823.3%
+        assert result["investment"] == 300
+        assert result["payout"] == 2470
+        assert result["return_rate"] == pytest.approx(2470 / 300)
+
+    def test_handles_empty_predictions(self):
+        """予測データがない場合は空の結果を返す"""
+        from keiba.cli import _calculate_umaren_simulation
+
+        predictions = {"races": []}
+        umaren_payouts = {}
+
+        result = _calculate_umaren_simulation(predictions, umaren_payouts)
+
+        assert result["total_races"] == 0
+        assert result["hits"] == 0
+        assert result["investment"] == 0
+        assert result["payout"] == 0
+        assert result["hit_rate"] == 0.0
+        assert result["return_rate"] == 0.0
+
+    def test_skips_race_without_umaren_payout(self):
+        """umaren_payoutsにないレースはスキップ"""
+        from keiba.cli import _calculate_umaren_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                }
+            ]
+        }
+        umaren_payouts = {}  # 払戻情報なし
+
+        result = _calculate_umaren_simulation(predictions, umaren_payouts)
+
+        assert result["total_races"] == 0
+
+    def test_skips_race_with_less_than_3_predictions(self):
+        """予測が3頭未満のレースはスキップ"""
+        from keiba.cli import _calculate_umaren_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        # 3頭目がない
+                    ],
+                }
+            ]
+        }
+        umaren_payouts = {
+            1: {"horse_numbers": [5, 3], "payout": 2470},
+        }
+
+        result = _calculate_umaren_simulation(predictions, umaren_payouts)
+
+        assert result["total_races"] == 0
+
+    def test_multiple_races_accumulation(self):
+        """複数レースの累計を正しく計算する"""
+        from keiba.cli import _calculate_umaren_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                },
+                {
+                    "race_number": 2,
+                    "predictions": [
+                        {"horse_number": 2, "rank": 1},
+                        {"horse_number": 7, "rank": 2},
+                        {"horse_number": 1, "rank": 3},
+                    ],
+                },
+                {
+                    "race_number": 3,
+                    "predictions": [
+                        {"horse_number": 4, "rank": 1},
+                        {"horse_number": 6, "rank": 2},
+                        {"horse_number": 9, "rank": 3},
+                    ],
+                },
+            ]
+        }
+        umaren_payouts = {
+            1: {"horse_numbers": [5, 3], "payout": 2470},  # 的中
+            2: {"horse_numbers": [2, 1], "payout": 1500},  # 的中 (2-1)
+            3: {"horse_numbers": [10, 11], "payout": 8000},  # 外れ
+        }
+
+        result = _calculate_umaren_simulation(predictions, umaren_payouts)
+
+        assert result["total_races"] == 3
+        assert result["hits"] == 2
+        assert result["investment"] == 900  # 3レース x 3点 x 100円
+        assert result["payout"] == 2470 + 1500
+
+
+class TestCalculateSanrenpukuSimulation:
+    """_calculate_sanrenpuku_simulation関数のテスト"""
+
+    def test_generates_one_combination_from_top3(self):
+        """予測上位3頭から1組の3連複を生成する: {1,2,3}"""
+        from keiba.cli import _calculate_sanrenpuku_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                }
+            ]
+        }
+        # 3連複は {5, 3, 8} の1組
+        sanrenpuku_payouts = {
+            1: {"horse_numbers": [5, 3, 8], "payout": 11060},
+        }
+
+        result = _calculate_sanrenpuku_simulation(predictions, sanrenpuku_payouts)
+
+        # 1点買いなので投資額は100円
+        assert result["investment"] == 100
+        assert result["total_races"] == 1
+
+    def test_hit_when_combination_matches(self):
+        """3連複トリオがset()として一致すれば的中"""
+        from keiba.cli import _calculate_sanrenpuku_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                }
+            ]
+        }
+        # (8, 3, 5) が的中（順序関係なく）
+        sanrenpuku_payouts = {
+            1: {"horse_numbers": [8, 3, 5], "payout": 11060},  # 順序が違っても的中
+        }
+
+        result = _calculate_sanrenpuku_simulation(predictions, sanrenpuku_payouts)
+
+        assert result["hits"] == 1
+        assert result["payout"] == 11060
+
+    def test_miss_when_combination_not_in_predictions(self):
+        """3連複トリオが予測と一致しない場合は外れ"""
+        from keiba.cli import _calculate_sanrenpuku_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                }
+            ]
+        }
+        # 7-9-10 は予測外
+        sanrenpuku_payouts = {
+            1: {"horse_numbers": [7, 9, 10], "payout": 5000},
+        }
+
+        result = _calculate_sanrenpuku_simulation(predictions, sanrenpuku_payouts)
+
+        assert result["hits"] == 0
+        assert result["payout"] == 0
+
+    def test_miss_when_only_two_horses_match(self):
+        """3頭中2頭だけ一致しても外れ"""
+        from keiba.cli import _calculate_sanrenpuku_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                }
+            ]
+        }
+        # 5, 3 は予測内だが、7 は予測外
+        sanrenpuku_payouts = {
+            1: {"horse_numbers": [5, 3, 7], "payout": 8000},
+        }
+
+        result = _calculate_sanrenpuku_simulation(predictions, sanrenpuku_payouts)
+
+        assert result["hits"] == 0
+        assert result["payout"] == 0
+
+    def test_calculates_hit_rate(self):
+        """的中率を計算する"""
+        from keiba.cli import _calculate_sanrenpuku_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                },
+                {
+                    "race_number": 2,
+                    "predictions": [
+                        {"horse_number": 2, "rank": 1},
+                        {"horse_number": 7, "rank": 2},
+                        {"horse_number": 1, "rank": 3},
+                    ],
+                },
+            ]
+        }
+        sanrenpuku_payouts = {
+            1: {"horse_numbers": [5, 3, 8], "payout": 11060},  # 的中
+            2: {"horse_numbers": [9, 10, 11], "payout": 3000},  # 外れ
+        }
+
+        result = _calculate_sanrenpuku_simulation(predictions, sanrenpuku_payouts)
+
+        assert result["hits"] == 1
+        assert result["total_races"] == 2
+        assert result["hit_rate"] == 0.5
+
+    def test_calculates_return_rate(self):
+        """回収率を計算する"""
+        from keiba.cli import _calculate_sanrenpuku_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                }
+            ]
+        }
+        sanrenpuku_payouts = {
+            1: {"horse_numbers": [5, 3, 8], "payout": 11060},
+        }
+
+        result = _calculate_sanrenpuku_simulation(predictions, sanrenpuku_payouts)
+
+        # 投資額100円、払戻11060円 = 回収率11060%
+        assert result["investment"] == 100
+        assert result["payout"] == 11060
+        assert result["return_rate"] == pytest.approx(11060 / 100)
+
+    def test_handles_empty_predictions(self):
+        """予測データがない場合は空の結果を返す"""
+        from keiba.cli import _calculate_sanrenpuku_simulation
+
+        predictions = {"races": []}
+        sanrenpuku_payouts = {}
+
+        result = _calculate_sanrenpuku_simulation(predictions, sanrenpuku_payouts)
+
+        assert result["total_races"] == 0
+        assert result["hits"] == 0
+        assert result["investment"] == 0
+        assert result["payout"] == 0
+        assert result["hit_rate"] == 0.0
+        assert result["return_rate"] == 0.0
+
+    def test_skips_race_without_sanrenpuku_payout(self):
+        """sanrenpuku_payoutsにないレースはスキップ"""
+        from keiba.cli import _calculate_sanrenpuku_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                }
+            ]
+        }
+        sanrenpuku_payouts = {}  # 払戻情報なし
+
+        result = _calculate_sanrenpuku_simulation(predictions, sanrenpuku_payouts)
+
+        assert result["total_races"] == 0
+
+    def test_skips_race_with_less_than_3_predictions(self):
+        """予測が3頭未満のレースはスキップ"""
+        from keiba.cli import _calculate_sanrenpuku_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        # 3頭目がない
+                    ],
+                }
+            ]
+        }
+        sanrenpuku_payouts = {
+            1: {"horse_numbers": [5, 3, 8], "payout": 11060},
+        }
+
+        result = _calculate_sanrenpuku_simulation(predictions, sanrenpuku_payouts)
+
+        assert result["total_races"] == 0
+
+    def test_multiple_races_accumulation(self):
+        """複数レースの累計を正しく計算する"""
+        from keiba.cli import _calculate_sanrenpuku_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                },
+                {
+                    "race_number": 2,
+                    "predictions": [
+                        {"horse_number": 2, "rank": 1},
+                        {"horse_number": 7, "rank": 2},
+                        {"horse_number": 1, "rank": 3},
+                    ],
+                },
+                {
+                    "race_number": 3,
+                    "predictions": [
+                        {"horse_number": 4, "rank": 1},
+                        {"horse_number": 6, "rank": 2},
+                        {"horse_number": 9, "rank": 3},
+                    ],
+                },
+            ]
+        }
+        sanrenpuku_payouts = {
+            1: {"horse_numbers": [5, 3, 8], "payout": 11060},  # 的中
+            2: {"horse_numbers": [2, 7, 1], "payout": 5500},  # 的中
+            3: {"horse_numbers": [10, 11, 12], "payout": 8000},  # 外れ
+        }
+
+        result = _calculate_sanrenpuku_simulation(predictions, sanrenpuku_payouts)
+
+        assert result["total_races"] == 3
+        assert result["hits"] == 2
+        assert result["investment"] == 300  # 3レース x 1点 x 100円
+        assert result["payout"] == 11060 + 5500
+
+
+class TestCalculateTanshoSimulation:
+    """_calculate_tansho_simulation関数のテスト
+
+    単勝シミュレーション:
+    - top1: 予測1位のみに100円賭けた場合
+    - top3: 予測1-3位に各100円（計300円）賭けた場合
+    """
+
+    def test_top1_hit_when_predicted_first_wins(self):
+        """top1: 予測1位が1着で的中と判定する"""
+        from keiba.cli import _calculate_tansho_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                }
+            ]
+        }
+        tansho_payouts = {
+            1: {"horse_number": 5, "payout": 350},  # 馬番5が1着
+        }
+
+        result = _calculate_tansho_simulation(predictions, tansho_payouts)
+
+        assert result["top1"]["hits"] == 1
+        assert result["top1"]["total_races"] == 1
+        assert result["top1"]["payout"] == 350
+
+    def test_top1_miss_when_predicted_first_not_win(self):
+        """top1: 予測1位が1着でない場合はミスと判定する"""
+        from keiba.cli import _calculate_tansho_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                }
+            ]
+        }
+        tansho_payouts = {
+            1: {"horse_number": 7, "payout": 800},  # 馬番7が1着（予測外）
+        }
+
+        result = _calculate_tansho_simulation(predictions, tansho_payouts)
+
+        assert result["top1"]["hits"] == 0
+        assert result["top1"]["total_races"] == 1
+        assert result["top1"]["payout"] == 0
+
+    def test_top1_investment_calculation(self):
+        """top1: 投資額はレース数 x 100円"""
+        from keiba.cli import _calculate_tansho_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [{"horse_number": 5, "rank": 1}],
+                },
+                {
+                    "race_number": 2,
+                    "predictions": [{"horse_number": 3, "rank": 1}],
+                },
+                {
+                    "race_number": 3,
+                    "predictions": [{"horse_number": 8, "rank": 1}],
+                },
+            ]
+        }
+        tansho_payouts = {
+            1: {"horse_number": 5, "payout": 350},
+            2: {"horse_number": 7, "payout": 500},
+            3: {"horse_number": 8, "payout": 200},
+        }
+
+        result = _calculate_tansho_simulation(predictions, tansho_payouts)
+
+        assert result["top1"]["total_races"] == 3
+        assert result["top1"]["investment"] == 300  # 3レース x 100円
+
+    def test_top3_hit_when_any_predicted_horse_wins(self):
+        """top3: 予測1-3位のいずれかが1着で的中と判定する"""
+        from keiba.cli import _calculate_tansho_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                }
+            ]
+        }
+        # 予測2位の馬番3が1着
+        tansho_payouts = {
+            1: {"horse_number": 3, "payout": 650},
+        }
+
+        result = _calculate_tansho_simulation(predictions, tansho_payouts)
+
+        assert result["top3"]["hits"] == 1
+        assert result["top3"]["payout"] == 650
+
+    def test_top3_miss_when_no_predicted_horse_wins(self):
+        """top3: 予測1-3位のいずれも1着でない場合はミス"""
+        from keiba.cli import _calculate_tansho_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                }
+            ]
+        }
+        tansho_payouts = {
+            1: {"horse_number": 12, "payout": 1500},  # 予測外の馬が1着
+        }
+
+        result = _calculate_tansho_simulation(predictions, tansho_payouts)
+
+        assert result["top3"]["hits"] == 0
+        assert result["top3"]["payout"] == 0
+
+    def test_top3_investment_calculation(self):
+        """top3: 投資額はレース数 x 300円（3頭に各100円）"""
+        from keiba.cli import _calculate_tansho_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                },
+                {
+                    "race_number": 2,
+                    "predictions": [
+                        {"horse_number": 2, "rank": 1},
+                        {"horse_number": 7, "rank": 2},
+                        {"horse_number": 1, "rank": 3},
+                    ],
+                },
+            ]
+        }
+        tansho_payouts = {
+            1: {"horse_number": 5, "payout": 350},
+            2: {"horse_number": 9, "payout": 800},
+        }
+
+        result = _calculate_tansho_simulation(predictions, tansho_payouts)
+
+        assert result["top3"]["total_races"] == 2
+        assert result["top3"]["total_bets"] == 6  # 2レース x 3頭
+        assert result["top3"]["investment"] == 600  # 2レース x 300円
+
+    def test_top3_payout_added_once_per_hit(self):
+        """top3: 的中時は払戻金を1回だけ加算（予測1位と2位の両方が的中しても1回）"""
+        from keiba.cli import _calculate_tansho_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                }
+            ]
+        }
+        # 予測1位の馬番5が1着（単勝は1着のみなので1回のみ的中）
+        tansho_payouts = {
+            1: {"horse_number": 5, "payout": 350},
+        }
+
+        result = _calculate_tansho_simulation(predictions, tansho_payouts)
+
+        # 払戻金は350円のみ（複数回加算されない）
+        assert result["top3"]["hits"] == 1
+        assert result["top3"]["payout"] == 350
+
+    def test_calculates_hit_rate_for_top1(self):
+        """top1: 的中率を計算する"""
+        from keiba.cli import _calculate_tansho_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [{"horse_number": 5, "rank": 1}],
+                },
+                {
+                    "race_number": 2,
+                    "predictions": [{"horse_number": 2, "rank": 1}],
+                },
+            ]
+        }
+        tansho_payouts = {
+            1: {"horse_number": 5, "payout": 350},  # 1Rは的中
+            2: {"horse_number": 7, "payout": 800},  # 2Rは外れ
+        }
+
+        result = _calculate_tansho_simulation(predictions, tansho_payouts)
+
+        assert result["top1"]["hits"] == 1
+        assert result["top1"]["total_races"] == 2
+        assert result["top1"]["hit_rate"] == 0.5  # 50%
+
+    def test_calculates_hit_rate_for_top3(self):
+        """top3: 的中率を計算する"""
+        from keiba.cli import _calculate_tansho_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                },
+                {
+                    "race_number": 2,
+                    "predictions": [
+                        {"horse_number": 2, "rank": 1},
+                        {"horse_number": 7, "rank": 2},
+                        {"horse_number": 1, "rank": 3},
+                    ],
+                },
+            ]
+        }
+        tansho_payouts = {
+            1: {"horse_number": 3, "payout": 650},  # 1Rは予測2位が1着で的中
+            2: {"horse_number": 9, "payout": 800},  # 2Rは外れ
+        }
+
+        result = _calculate_tansho_simulation(predictions, tansho_payouts)
+
+        assert result["top3"]["hits"] == 1
+        assert result["top3"]["total_races"] == 2
+        assert result["top3"]["hit_rate"] == 0.5  # 50%
+
+    def test_calculates_return_rate_for_top1(self):
+        """top1: 回収率を計算する"""
+        from keiba.cli import _calculate_tansho_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [{"horse_number": 5, "rank": 1}],
+                },
+            ]
+        }
+        tansho_payouts = {
+            1: {"horse_number": 5, "payout": 350},
+        }
+
+        result = _calculate_tansho_simulation(predictions, tansho_payouts)
+
+        # 100円賭けて350円返ってきた = 回収率350%
+        assert result["top1"]["investment"] == 100
+        assert result["top1"]["payout"] == 350
+        assert result["top1"]["return_rate"] == 3.5
+
+    def test_calculates_return_rate_for_top3(self):
+        """top3: 回収率を計算する"""
+        from keiba.cli import _calculate_tansho_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                },
+            ]
+        }
+        tansho_payouts = {
+            1: {"horse_number": 5, "payout": 350},
+        }
+
+        result = _calculate_tansho_simulation(predictions, tansho_payouts)
+
+        # 300円賭けて350円返ってきた = 回収率116.7%
+        assert result["top3"]["investment"] == 300
+        assert result["top3"]["payout"] == 350
+        assert result["top3"]["return_rate"] == pytest.approx(350 / 300)
+
+    def test_handles_empty_predictions(self):
+        """予測データがない場合は空の結果を返す"""
+        from keiba.cli import _calculate_tansho_simulation
+
+        predictions = {"races": []}
+        tansho_payouts = {}
+
+        result = _calculate_tansho_simulation(predictions, tansho_payouts)
+
+        assert result["top1"]["total_races"] == 0
+        assert result["top1"]["hits"] == 0
+        assert result["top1"]["investment"] == 0
+        assert result["top1"]["payout"] == 0
+        assert result["top1"]["hit_rate"] == 0.0
+        assert result["top1"]["return_rate"] == 0.0
+        assert result["top3"]["total_races"] == 0
+        assert result["top3"]["total_bets"] == 0
+        assert result["top3"]["hits"] == 0
+        assert result["top3"]["investment"] == 0
+        assert result["top3"]["payout"] == 0
+        assert result["top3"]["hit_rate"] == 0.0
+        assert result["top3"]["return_rate"] == 0.0
+
+    def test_skips_race_without_tansho_payout(self):
+        """tansho_payoutsにないレースはスキップ"""
+        from keiba.cli import _calculate_tansho_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                }
+            ]
+        }
+        tansho_payouts = {}  # 払戻情報なし
+
+        result = _calculate_tansho_simulation(predictions, tansho_payouts)
+
+        assert result["top1"]["total_races"] == 0
+        assert result["top3"]["total_races"] == 0
+
+    def test_skips_race_with_no_predictions(self):
+        """予測がないレースはスキップ"""
+        from keiba.cli import _calculate_tansho_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [],
+                }
+            ]
+        }
+        tansho_payouts = {
+            1: {"horse_number": 5, "payout": 350},
+        }
+
+        result = _calculate_tansho_simulation(predictions, tansho_payouts)
+
+        assert result["top1"]["total_races"] == 0
+        assert result["top3"]["total_races"] == 0
+
+    def test_top3_with_less_than_3_predictions(self):
+        """予測が3頭未満のレースはtop3の賭け数がその頭数になる"""
+        from keiba.cli import _calculate_tansho_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        # 3頭目がない
+                    ],
+                }
+            ]
+        }
+        tansho_payouts = {
+            1: {"horse_number": 3, "payout": 650},
+        }
+
+        result = _calculate_tansho_simulation(predictions, tansho_payouts)
+
+        # top1は通常通り
+        assert result["top1"]["total_races"] == 1
+        assert result["top1"]["investment"] == 100
+        # top3は2頭分（200円）
+        assert result["top3"]["total_races"] == 1
+        assert result["top3"]["total_bets"] == 2
+        assert result["top3"]["investment"] == 200
+        assert result["top3"]["hits"] == 1  # 馬番3が的中
+        assert result["top3"]["payout"] == 650
+
+    def test_multiple_races_accumulation(self):
+        """複数レースの累計を正しく計算する"""
+        from keiba.cli import _calculate_tansho_simulation
+
+        predictions = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                },
+                {
+                    "race_number": 2,
+                    "predictions": [
+                        {"horse_number": 2, "rank": 1},
+                        {"horse_number": 7, "rank": 2},
+                        {"horse_number": 1, "rank": 3},
+                    ],
+                },
+                {
+                    "race_number": 3,
+                    "predictions": [
+                        {"horse_number": 4, "rank": 1},
+                        {"horse_number": 6, "rank": 2},
+                        {"horse_number": 9, "rank": 3},
+                    ],
+                },
+            ]
+        }
+        tansho_payouts = {
+            1: {"horse_number": 5, "payout": 350},  # top1的中、top3的中
+            2: {"horse_number": 7, "payout": 650},  # top1外れ、top3的中（予測2位）
+            3: {"horse_number": 10, "payout": 1500},  # top1外れ、top3外れ
+        }
+
+        result = _calculate_tansho_simulation(predictions, tansho_payouts)
+
+        # top1
+        assert result["top1"]["total_races"] == 3
+        assert result["top1"]["hits"] == 1  # 1Rのみ的中
+        assert result["top1"]["investment"] == 300
+        assert result["top1"]["payout"] == 350
+        assert result["top1"]["hit_rate"] == pytest.approx(1 / 3)
+        assert result["top1"]["return_rate"] == pytest.approx(350 / 300)
+
+        # top3
+        assert result["top3"]["total_races"] == 3
+        assert result["top3"]["total_bets"] == 9  # 3レース x 3頭
+        assert result["top3"]["hits"] == 2  # 1R, 2Rが的中
+        assert result["top3"]["investment"] == 900
+        assert result["top3"]["payout"] == 350 + 650
+        assert result["top3"]["hit_rate"] == pytest.approx(2 / 3)
+        assert result["top3"]["return_rate"] == pytest.approx(1000 / 900)

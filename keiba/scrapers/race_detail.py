@@ -403,12 +403,15 @@ class RaceDetailScraper(BaseScraper):
     def fetch_payouts(self, race_id: str) -> list[dict]:
         """Fetch fukusho (place) payouts for a specific race.
 
+        First attempts to fetch from db.netkeiba.com. If no data is found,
+        falls back to race.netkeiba.com.
+
         Args:
             race_id: The race ID string (e.g., "202401010101").
 
         Returns:
             List of dictionaries containing "horse_number" and "payout" keys.
-            Returns empty list if no payout data is found.
+            Returns empty list if no payout data is found from either source.
 
         Example:
             >>> scraper = RaceDetailScraper()
@@ -416,10 +419,17 @@ class RaceDetailScraper(BaseScraper):
             >>> print(payouts)
             [{"horse_number": 5, "payout": 150}, {"horse_number": 3, "payout": 280}]
         """
+        # Try db.netkeiba.com first
         url = self._build_url(race_id)
         html = self.fetch(url)
         soup = self.get_soup(html)
-        return self._parse_fukusho_payouts(soup)
+        payouts = self._parse_fukusho_payouts(soup)
+
+        # Fallback to race.netkeiba.com if no data from db.netkeiba.com
+        if not payouts:
+            payouts = self._fetch_payouts_from_race_netkeiba(race_id)
+
+        return payouts
 
     def _parse_fukusho_payouts(self, soup: BeautifulSoup) -> list[dict]:
         """Parse fukusho (place) payouts from the page.
@@ -489,3 +499,356 @@ class RaceDetailScraper(BaseScraper):
             if text:
                 values.append(text)
         return values
+
+    def _fetch_payouts_from_race_netkeiba(self, race_id: str) -> list[dict]:
+        """Fetch fukusho payouts from race.netkeiba.com.
+
+        Args:
+            race_id: The race ID string (e.g., "202401010101").
+
+        Returns:
+            List of dictionaries containing "horse_number" and "payout" keys.
+        """
+        url = f"https://race.netkeiba.com/race/result.html?race_id={race_id}"
+        html = self.fetch(url)
+        soup = self.get_soup(html)
+        return self._parse_fukusho_payouts_race_netkeiba(soup)
+
+    def _parse_fukusho_payouts_race_netkeiba(self, soup: BeautifulSoup) -> list[dict]:
+        """Parse fukusho payouts from race.netkeiba.com HTML.
+
+        HTML structure:
+        <tr class="Fukusho">
+          <th>複勝</th>
+          <td class="Result">
+            <div><span>5</span></div>
+            <div><span>6</span></div>
+          </td>
+          <td class="Payout">
+            <span>280円<br />210円</span>
+          </td>
+        </tr>
+
+        Args:
+            soup: BeautifulSoup object of the race result page.
+
+        Returns:
+            List of dictionaries containing "horse_number" and "payout" keys.
+        """
+        payouts = []
+
+        # Find the Fukusho row
+        fukusho_row = soup.find("tr", class_="Fukusho")
+        if not fukusho_row:
+            return payouts
+
+        # Find Result td (contains horse numbers)
+        result_td = fukusho_row.find("td", class_="Result")
+        if not result_td:
+            return payouts
+
+        # Find Payout td (contains payout amounts)
+        payout_td = fukusho_row.find("td", class_="Payout")
+        if not payout_td:
+            return payouts
+
+        # Extract horse numbers from divs containing spans
+        horse_numbers = []
+        for div in result_td.find_all("div"):
+            span = div.find("span")
+            if span:
+                text = span.get_text(strip=True)
+                if text.isdigit():
+                    horse_numbers.append(int(text))
+
+        # Extract payout amounts from span (separated by <br>)
+        payout_values = []
+        payout_span = payout_td.find("span")
+        if payout_span:
+            # Get text content and split by line breaks
+            payout_text = payout_span.get_text(separator="\n", strip=True)
+            for line in payout_text.split("\n"):
+                # Remove "円" and commas, then parse as int
+                cleaned = line.strip().replace("円", "").replace(",", "")
+                if cleaned.isdigit():
+                    payout_values.append(int(cleaned))
+
+        # Validate that counts match
+        if len(horse_numbers) != len(payout_values):
+            return []
+
+        # Build result list
+        for horse_num, payout in zip(horse_numbers, payout_values):
+            payouts.append({
+                "horse_number": horse_num,
+                "payout": payout
+            })
+
+        return payouts
+
+    def _parse_umaren_payout_race_netkeiba(self, soup: BeautifulSoup) -> dict | None:
+        """Parse umaren (quinella) payout from race.netkeiba.com HTML.
+
+        HTML structure:
+        <tr class="Umaren">
+          <th>馬連</th>
+          <td class="Result">
+            <ul>
+              <li><span>5</span></li>
+              <li><span>6</span></li>
+            </ul>
+          </td>
+          <td class="Payout"><span>2,470</span></td>
+        </tr>
+
+        Args:
+            soup: BeautifulSoup object of the race result page.
+
+        Returns:
+            Dictionary containing "horse_numbers" (list of 2 ints) and "payout" (int),
+            or None if no umaren data is found.
+        """
+        # Find the Umaren row
+        umaren_row = soup.find("tr", class_="Umaren")
+        if not umaren_row:
+            return None
+
+        # Find Result td (contains horse numbers)
+        result_td = umaren_row.find("td", class_="Result")
+        if not result_td:
+            return None
+
+        # Find Payout td (contains payout amount)
+        payout_td = umaren_row.find("td", class_="Payout")
+        if not payout_td:
+            return None
+
+        # Extract horse numbers from ul > li > span
+        horse_numbers = []
+        ul = result_td.find("ul")
+        if ul:
+            for li in ul.find_all("li"):
+                span = li.find("span")
+                if span:
+                    text = span.get_text(strip=True)
+                    if text.isdigit():
+                        horse_numbers.append(int(text))
+
+        # Need exactly 2 horse numbers for umaren
+        if len(horse_numbers) != 2:
+            return None
+
+        # Extract payout amount from span
+        payout_span = payout_td.find("span")
+        if not payout_span:
+            return None
+
+        payout_text = payout_span.get_text(strip=True)
+        # Remove yen suffix and commas, then parse as int
+        cleaned = payout_text.replace("円", "").replace(",", "")
+        if not cleaned.isdigit():
+            return None
+
+        payout = int(cleaned)
+
+        return {
+            "horse_numbers": horse_numbers,
+            "payout": payout
+        }
+
+    def fetch_umaren_payout(self, race_id: str) -> dict | None:
+        """Fetch umaren (quinella) payout for a specific race.
+
+        Args:
+            race_id: The race ID string (e.g., "202401010101").
+
+        Returns:
+            Dictionary containing "horse_numbers" (list of 2 ints) and "payout" (int),
+            or None if no umaren data is found.
+
+        Example:
+            >>> scraper = RaceDetailScraper()
+            >>> result = scraper.fetch_umaren_payout("202401010101")
+            >>> print(result)
+            {"horse_numbers": [5, 6], "payout": 2470}
+        """
+        url = f"https://race.netkeiba.com/race/result.html?race_id={race_id}"
+        html = self.fetch(url)
+        soup = self.get_soup(html)
+        return self._parse_umaren_payout_race_netkeiba(soup)
+
+    def _parse_sanrenpuku_payout_race_netkeiba(self, soup: BeautifulSoup) -> dict | None:
+        """Parse sanrenpuku (trio) payout from race.netkeiba.com HTML.
+
+        HTML structure:
+        <tr class="Fuku3">
+          <th>3連複</th>
+          <td class="Result">
+            <ul>
+              <li><span>3</span></li>
+              <li><span>5</span></li>
+              <li><span>6</span></li>
+            </ul>
+          </td>
+          <td class="Payout"><span>11,060</span></td>
+        </tr>
+
+        Args:
+            soup: BeautifulSoup object of the race result page.
+
+        Returns:
+            Dictionary containing "horse_numbers" (list of 3 ints) and "payout" (int),
+            or None if no sanrenpuku data is found.
+        """
+        # Find the Fuku3 row
+        fuku3_row = soup.find("tr", class_="Fuku3")
+        if not fuku3_row:
+            return None
+
+        # Find Result td (contains horse numbers)
+        result_td = fuku3_row.find("td", class_="Result")
+        if not result_td:
+            return None
+
+        # Find Payout td (contains payout amount)
+        payout_td = fuku3_row.find("td", class_="Payout")
+        if not payout_td:
+            return None
+
+        # Extract horse numbers from ul > li > span
+        horse_numbers = []
+        ul = result_td.find("ul")
+        if ul:
+            for li in ul.find_all("li"):
+                span = li.find("span")
+                if span:
+                    text = span.get_text(strip=True)
+                    if text.isdigit():
+                        horse_numbers.append(int(text))
+
+        # Need exactly 3 horse numbers for sanrenpuku
+        if len(horse_numbers) != 3:
+            return None
+
+        # Extract payout amount from span
+        payout_span = payout_td.find("span")
+        if not payout_span:
+            return None
+
+        payout_text = payout_span.get_text(strip=True)
+        # Remove yen suffix and commas, then parse as int
+        cleaned = payout_text.replace("円", "").replace(",", "")
+        if not cleaned.isdigit():
+            return None
+
+        payout = int(cleaned)
+
+        return {
+            "horse_numbers": horse_numbers,
+            "payout": payout
+        }
+
+    def fetch_sanrenpuku_payout(self, race_id: str) -> dict | None:
+        """Fetch sanrenpuku (trio) payout for a specific race.
+
+        Args:
+            race_id: The race ID string (e.g., "202401010101").
+
+        Returns:
+            Dictionary containing "horse_numbers" (list of 3 ints) and "payout" (int),
+            or None if no sanrenpuku data is found.
+
+        Example:
+            >>> scraper = RaceDetailScraper()
+            >>> result = scraper.fetch_sanrenpuku_payout("202401010101")
+            >>> print(result)
+            {"horse_numbers": [3, 5, 6], "payout": 11060}
+        """
+        url = f"https://race.netkeiba.com/race/result.html?race_id={race_id}"
+        html = self.fetch(url)
+        soup = self.get_soup(html)
+        return self._parse_sanrenpuku_payout_race_netkeiba(soup)
+
+    def _parse_tansho_payout_race_netkeiba(self, soup: BeautifulSoup) -> dict | None:
+        """Parse tansho (win) payout from race.netkeiba.com HTML.
+
+        HTML structure:
+        <tr class="Tansho">
+          <th>単勝</th>
+          <td class="Result"><div><span>5</span></div></td>
+          <td class="Payout"><span>350円</span></td>
+        </tr>
+
+        Args:
+            soup: BeautifulSoup object of the race result page.
+
+        Returns:
+            Dictionary containing "horse_number" (int) and "payout" (int),
+            or None if no tansho data is found.
+        """
+        # Find the Tansho row
+        tansho_row = soup.find("tr", class_="Tansho")
+        if not tansho_row:
+            return None
+
+        # Find Result td (contains horse number)
+        result_td = tansho_row.find("td", class_="Result")
+        if not result_td:
+            return None
+
+        # Find Payout td (contains payout amount)
+        payout_td = tansho_row.find("td", class_="Payout")
+        if not payout_td:
+            return None
+
+        # Extract horse number from div > span
+        horse_number = None
+        div = result_td.find("div")
+        if div:
+            span = div.find("span")
+            if span:
+                text = span.get_text(strip=True)
+                if text.isdigit():
+                    horse_number = int(text)
+
+        if horse_number is None:
+            return None
+
+        # Extract payout amount from span
+        payout_span = payout_td.find("span")
+        if not payout_span:
+            return None
+
+        payout_text = payout_span.get_text(strip=True)
+        # Remove yen suffix and commas, then parse as int
+        cleaned = payout_text.replace("円", "").replace(",", "")
+        if not cleaned.isdigit():
+            return None
+
+        payout = int(cleaned)
+
+        return {
+            "horse_number": horse_number,
+            "payout": payout
+        }
+
+    def fetch_tansho_payout(self, race_id: str) -> dict | None:
+        """Fetch tansho (win) payout for a specific race.
+
+        Args:
+            race_id: The race ID string (e.g., "202401010101").
+
+        Returns:
+            Dictionary containing "horse_number" (int) and "payout" (int),
+            or None if no tansho data is found.
+
+        Example:
+            >>> scraper = RaceDetailScraper()
+            >>> result = scraper.fetch_tansho_payout("202401010101")
+            >>> print(result)
+            {"horse_number": 5, "payout": 350}
+        """
+        url = f"https://race.netkeiba.com/race/result.html?race_id={race_id}"
+        html = self.fetch(url)
+        soup = self.get_soup(html)
+        return self._parse_tansho_payout_race_netkeiba(soup)

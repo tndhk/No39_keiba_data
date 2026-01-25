@@ -30,6 +30,129 @@ keiba review-day --venue 中山 --db data/keiba.db
 keiba backtest-fukusho --db data/keiba.db -v
 ```
 
+## 使用方法
+
+### 基本ワークフロー
+
+```
+1. データ収集 → 2. モデル学習 → 3. 予測実行 → 4. 検証
+```
+
+### Step 1: データ収集
+
+```bash
+# レースデータ収集（必須）
+keiba scrape --year 2024 --month 1 --db data/keiba.db --jra-only
+# オプション: --jra-only（中央競馬のみ）
+
+# 馬の血統情報補完（血統ファクター用、推奨）
+keiba scrape-horses --db data/keiba.db --limit 500
+# オプション: --limit <int>（取得馬数、デフォルト100）
+```
+
+### Step 2: モデル学習
+
+```bash
+keiba train --db data/keiba.db --output data/models/model.joblib
+# オプション: --cutoff-date <YYYY-MM-DD>（学習データのカットオフ日）
+```
+- 学習データは最低100サンプル必要
+- カットオフ日より前のレースのみ使用（データリーク防止）
+
+### Step 3: 予測実行
+
+```bash
+# 日単位予測（推奨）- Markdown出力あり
+keiba predict-day --venue 中山 --db data/keiba.db
+# オプション: --date <YYYY-MM-DD>（デフォルト今日）, --no-ml（ML予測スキップ）
+# 出力: docs/predictions/{YYYY-MM-DD}-{venue}.md
+
+# 単一レース予測（出馬表URLから）
+keiba predict --url "https://race.netkeiba.com/race/shutuba.html?race_id=XXXX" --db data/keiba.db
+# オプション: --no-ml（ML予測スキップ）
+```
+
+### Step 4: 検証
+
+```bash
+# 予測検証（predict-day実行後）- 複勝・単勝シミュレーション付き
+keiba review-day --venue 中山 --db data/keiba.db
+# オプション: --date <YYYY-MM-DD>（デフォルト今日）
+# 出力: 予測ファイルに検証結果（複勝・単勝の的中率・回収率）を追記
+
+# 複勝シミュレーション（期間指定バックテスト）
+keiba backtest-fukusho --db data/keiba.db -v
+# オプション: --from/--to <YYYY-MM-DD>（期間指定）, --last-week, --top-n <int>（デフォルト3）, --venue <会場名>
+```
+
+### コマンドリファレンス
+
+| コマンド | 説明 | 主要オプション |
+|---------|------|---------------|
+| scrape | レースデータ収集 | --year, --month, --db, --jra-only |
+| scrape-horses | 馬の血統情報補完 | --db, --limit |
+| train | MLモデル学習 | --db, --output, --cutoff-date |
+| analyze | 過去レース分析 | --db, --date, --venue, --race, --no-predict |
+| predict | 出馬表URL予測 | --url, --db, --no-ml |
+| predict-day | 日単位予測 | --date, --venue, --db, --no-ml |
+| review-day | 予測検証（複勝・単勝シミュレーション） | --date, --venue, --db |
+| backtest | 期間バックテスト | --db, --from, --to, --months, --retrain-interval |
+| backtest-fukusho | 複勝シミュレーション | --db, --from, --to, --last-week, --top-n, --venue |
+
+### コマンド依存関係
+
+```
+scrape（必須）→ scrape-horses（推奨）→ train（ML予測に必要）→ predict-day → review-day
+```
+
+## 典型的なユースケース
+
+### 日次ワークフロー（レース当日）
+
+```bash
+# 予測実行
+keiba predict-day --venue 中山 --db data/keiba.db
+# → docs/predictions/YYYY-MM-DD-nakayama.md が生成
+
+# 検証（翌日以降、結果確定後）
+keiba review-day --venue 中山 --date YYYY-MM-DD --db data/keiba.db
+# → 予測ファイルに複勝・単勝シミュレーション結果を追記
+```
+
+### 週次ワークフロー
+
+```bash
+# 先週のパフォーマンス評価
+keiba backtest-fukusho --last-week --top-n 3 --db data/keiba.db -v
+# → 的中率・回収率を確認
+```
+
+### 月次ワークフロー
+
+```bash
+# 1. 新月データ取得
+keiba scrape --year 2026 --month 1 --db data/keiba.db --jra-only
+
+# 2. 血統情報補完
+keiba scrape-horses --db data/keiba.db --limit 500
+
+# 3. モデル再学習
+keiba train --db data/keiba.db --output data/models/model_202601.joblib
+```
+
+### ユースケース一覧
+
+| 周期 | 目的 | コマンド |
+|------|------|---------|
+| 初回 | 初期セットアップ | scrape（複数月）, scrape-horses, train |
+| 日次 | 当日予測 | predict-day |
+| 翌日 | 結果検証 | review-day |
+| 週次 | パフォーマンス評価 | backtest-fukusho --last-week |
+| 月次 | データ更新・再学習 | scrape, scrape-horses, train |
+| 随時 | 過去分析 | analyze |
+| 随時 | 単一レース予測 | predict |
+| 随時 | 長期バックテスト | backtest |
+
 ## アーキテクチャ
 
 ```

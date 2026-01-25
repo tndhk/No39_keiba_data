@@ -1486,8 +1486,8 @@ def _save_predictions_markdown(
 
         predictions = race_data.get("predictions", [])
         if predictions:
-            lines.append("| 順位 | 馬番 | 馬名 | ML確率 | 総合 |")
-            lines.append("|:---:|:---:|:---|:---:|:---:|")
+            lines.append("| 順位 | 馬番 | 馬名 | ML確率 | 複合 | 総合 |")
+            lines.append("|:---:|:---:|:---|:---:|:---:|:---:|")
 
             for pred in predictions[:5]:  # 上位5頭のみ
                 rank = pred.get("rank", "")
@@ -1496,11 +1496,13 @@ def _save_predictions_markdown(
                 ml_prob = pred.get("ml_probability", 0)
                 total_score = pred.get("total_score")
 
+                combined_score = pred.get("combined_score")
                 prob_str = f"{ml_prob:.1%}" if ml_prob > 0 else "-"
+                combined_str = f"{combined_score:.1f}" if combined_score else "-"
                 total_str = f"{total_score:.1f}" if total_score else "-"
 
                 lines.append(
-                    f"| {rank} | {horse_number} | {horse_name} | {prob_str} | {total_str} |"
+                    f"| {rank} | {horse_number} | {horse_name} | {prob_str} | {combined_str} | {total_str} |"
                 )
         else:
             lines.append("予測データなし")
@@ -1616,6 +1618,7 @@ def predict_day(date_str: str | None, venue: str, db: str, no_ml: bool):
                             "horse_number": p.horse_number,
                             "horse_name": p.horse_name,
                             "ml_probability": p.ml_probability,
+                            "combined_score": p.combined_score,
                             "total_score": p.total_score,
                         }
                         for p in predictions
@@ -1903,6 +1906,229 @@ def _calculate_fukusho_simulation(
     return result
 
 
+def _calculate_tansho_simulation(predictions: dict, tansho_payouts: dict) -> dict:
+    """単勝シミュレーション
+
+    Args:
+        predictions: {"races": [{"race_number": int, "predictions": [{"horse_number": int, "rank": int}, ...]}]}
+        tansho_payouts: {race_number: {"horse_number": int, "payout": int}}
+
+    Returns:
+        {
+            "top1": {"total_races", "hits", "hit_rate", "investment", "payout", "return_rate"},
+            "top3": {"total_races", "total_bets", "hits", "hit_rate", "investment", "payout", "return_rate"}
+        }
+    """
+    result = {
+        "top1": {
+            "total_races": 0,
+            "hits": 0,
+            "hit_rate": 0.0,
+            "investment": 0,
+            "payout": 0,
+            "return_rate": 0.0,
+        },
+        "top3": {
+            "total_races": 0,
+            "total_bets": 0,
+            "hits": 0,
+            "hit_rate": 0.0,
+            "investment": 0,
+            "payout": 0,
+            "return_rate": 0.0,
+        },
+    }
+
+    races = predictions.get("races", [])
+    if not races:
+        return result
+
+    for race in races:
+        race_number = race.get("race_number")
+        race_predictions = race.get("predictions", [])
+
+        # 予測がないレースまたはtansho_payoutsにないレースはスキップ
+        if not race_predictions or race_number not in tansho_payouts:
+            continue
+
+        tansho_data = tansho_payouts[race_number]
+        winning_horse = tansho_data["horse_number"]
+        payout = tansho_data["payout"]
+
+        # Top1シミュレーション（予測1位に100円賭け）
+        result["top1"]["total_races"] += 1
+        result["top1"]["investment"] += 100
+
+        top1_horse = race_predictions[0]["horse_number"]
+        if top1_horse == winning_horse:
+            result["top1"]["hits"] += 1
+            result["top1"]["payout"] += payout
+
+        # Top3シミュレーション（予測1-3位に各100円賭け）
+        result["top3"]["total_races"] += 1
+        bet_count = min(len(race_predictions), 3)
+        result["top3"]["total_bets"] += bet_count
+        result["top3"]["investment"] += bet_count * 100
+
+        # 予測1-3位のいずれかが1着か判定
+        predicted_horses = [p["horse_number"] for p in race_predictions[:3]]
+        if winning_horse in predicted_horses:
+            result["top3"]["hits"] += 1
+            result["top3"]["payout"] += payout
+
+    # 的中率と回収率を計算
+    if result["top1"]["total_races"] > 0:
+        result["top1"]["hit_rate"] = result["top1"]["hits"] / result["top1"]["total_races"]
+        result["top1"]["return_rate"] = result["top1"]["payout"] / result["top1"]["investment"]
+
+    if result["top3"]["total_races"] > 0:
+        result["top3"]["hit_rate"] = result["top3"]["hits"] / result["top3"]["total_races"]
+        result["top3"]["return_rate"] = result["top3"]["payout"] / result["top3"]["investment"]
+
+    return result
+
+
+def _calculate_umaren_simulation(predictions: dict, umaren_payouts: dict) -> dict:
+    """馬連シミュレーション（予測1-2, 1-3, 2-3の3点買い）
+
+    Args:
+        predictions: パースされた予測データ
+        umaren_payouts: レース番号 -> {"horse_numbers": [5, 6], "payout": 2470}
+
+    Returns:
+        {
+            "total_races": int,  # 対象レース数
+            "hits": int,  # 的中数
+            "hit_rate": float,  # 的中率
+            "investment": int,  # 投資額（レース数 x 3点 x 100円）
+            "payout": int,  # 払戻額
+            "return_rate": float,  # 回収率
+        }
+    """
+    result = {
+        "total_races": 0,
+        "hits": 0,
+        "hit_rate": 0.0,
+        "investment": 0,
+        "payout": 0,
+        "return_rate": 0.0,
+    }
+
+    races = predictions.get("races", [])
+    if not races:
+        return result
+
+    for race in races:
+        race_number = race.get("race_number")
+        if not race_number:
+            continue  # race_numberがない場合はスキップ
+
+        # キーの型を整数に統一
+        race_key = int(race_number) if isinstance(race_number, str) else race_number
+
+        race_predictions = race.get("predictions", [])
+
+        # 予測が3頭未満またはumaren_payoutsにないレースはスキップ
+        if len(race_predictions) < 3 or race_key not in umaren_payouts:
+            continue
+
+        result["total_races"] += 1
+        result["investment"] += 300  # 3点 x 100円
+
+        # 予測上位3頭の馬番
+        top3_horses = [p["horse_number"] for p in race_predictions[:3]]
+
+        # 3組の馬連を生成: (1,2), (1,3), (2,3)
+        combinations = [
+            {top3_horses[0], top3_horses[1]},
+            {top3_horses[0], top3_horses[2]},
+            {top3_horses[1], top3_horses[2]},
+        ]
+
+        # 実際の馬連結果
+        payout_data = umaren_payouts[race_key]
+        actual_pair = set(payout_data["horse_numbers"])
+
+        # 的中判定
+        if actual_pair in combinations:
+            result["hits"] += 1
+            result["payout"] += payout_data["payout"]
+
+    # 的中率と回収率を計算
+    if result["total_races"] > 0:
+        result["hit_rate"] = result["hits"] / result["total_races"]
+        result["return_rate"] = result["payout"] / result["investment"]
+
+    return result
+
+
+def _calculate_sanrenpuku_simulation(predictions: dict, sanrenpuku_payouts: dict) -> dict:
+    """3連複シミュレーション（予測1-2-3の1点買い）
+
+    Args:
+        predictions: パースされた予測データ
+        sanrenpuku_payouts: レース番号 -> {"horse_numbers": [3, 5, 6], "payout": 11060}
+
+    Returns:
+        {
+            "total_races": int,  # 対象レース数
+            "hits": int,  # 的中数
+            "hit_rate": float,  # 的中率
+            "investment": int,  # 投資額（レース数 x 1点 x 100円）
+            "payout": int,  # 払戻額
+            "return_rate": float,  # 回収率
+        }
+    """
+    result = {
+        "total_races": 0,
+        "hits": 0,
+        "hit_rate": 0.0,
+        "investment": 0,
+        "payout": 0,
+        "return_rate": 0.0,
+    }
+
+    races = predictions.get("races", [])
+    if not races:
+        return result
+
+    for race in races:
+        race_number = race.get("race_number")
+        if not race_number:
+            continue  # race_numberがない場合はスキップ
+
+        # キーの型を整数に統一
+        race_key = int(race_number) if isinstance(race_number, str) else race_number
+
+        race_predictions = race.get("predictions", [])
+
+        # 予測が3頭未満またはsanrenpuku_payoutsにないレースはスキップ
+        if len(race_predictions) < 3 or race_key not in sanrenpuku_payouts:
+            continue
+
+        result["total_races"] += 1
+        result["investment"] += 100  # 1点 x 100円
+
+        # 予測上位3頭の馬番
+        top3_horses = {p["horse_number"] for p in race_predictions[:3]}
+
+        # 実際の3連複結果
+        payout_data = sanrenpuku_payouts[race_key]
+        actual_trio = set(payout_data["horse_numbers"])
+
+        # 的中判定（3頭すべて一致）
+        if actual_trio == top3_horses:
+            result["hits"] += 1
+            result["payout"] += payout_data["payout"]
+
+    # 的中率と回収率を計算
+    if result["total_races"] > 0:
+        result["hit_rate"] = result["hits"] / result["total_races"]
+        result["return_rate"] = result["payout"] / result["investment"]
+
+    return result
+
+
 def _append_review_to_markdown(filepath: str, review_data: dict) -> None:
     """検証結果をMarkdownファイルに追記する
 
@@ -1946,6 +2172,49 @@ def _append_review_to_markdown(filepath: str, review_data: dict) -> None:
         f"- 投資額: {review_data['top3']['investment']}円",
         f"- 払戻額: {review_data['top3']['payout']}円",
         f"- 回収率: {review_data['top3']['return_rate'] * 100:.1f}%",
+        "",
+        "### 馬連シミュレーション（予測1-2, 1-3, 2-3の3点買い）",
+        "",
+        f"- 対象レース数: {review_data.get('umaren', {}).get('total_races', 0)}",
+        f"- 的中数: {review_data.get('umaren', {}).get('hits', 0)}",
+        f"- 的中率: {review_data.get('umaren', {}).get('hit_rate', 0.0) * 100:.1f}%",
+        f"- 投資額: {review_data.get('umaren', {}).get('investment', 0)}円",
+        f"- 払戻額: {review_data.get('umaren', {}).get('payout', 0)}円",
+        f"- 回収率: {review_data.get('umaren', {}).get('return_rate', 0.0) * 100:.1f}%",
+        "",
+        "### 3連複シミュレーション（予測1-2-3の1点買い）",
+        "",
+        f"- 対象レース数: {review_data.get('sanrenpuku', {}).get('total_races', 0)}",
+        f"- 的中数: {review_data.get('sanrenpuku', {}).get('hits', 0)}",
+        f"- 的中率: {review_data.get('sanrenpuku', {}).get('hit_rate', 0.0) * 100:.1f}%",
+        f"- 投資額: {review_data.get('sanrenpuku', {}).get('investment', 0)}円",
+        f"- 払戻額: {review_data.get('sanrenpuku', {}).get('payout', 0)}円",
+        f"- 回収率: {review_data.get('sanrenpuku', {}).get('return_rate', 0.0) * 100:.1f}%",
+        "",
+        "### 単勝シミュレーション",
+        "",
+        "#### 予測1位（本命のみ）",
+        "",
+        "| 指標 | 値 |",
+        "|------|------|",
+        f"| 対象レース | {review_data.get('tansho', {}).get('top1', {}).get('total_races', 0)} |",
+        f"| 的中数 | {review_data.get('tansho', {}).get('top1', {}).get('hits', 0)} |",
+        f"| 的中率 | {review_data.get('tansho', {}).get('top1', {}).get('hit_rate', 0.0) * 100:.1f}% |",
+        f"| 投資額 | {review_data.get('tansho', {}).get('top1', {}).get('investment', 0):,}円 |",
+        f"| 払戻額 | {review_data.get('tansho', {}).get('top1', {}).get('payout', 0):,}円 |",
+        f"| 回収率 | {review_data.get('tansho', {}).get('top1', {}).get('return_rate', 0.0) * 100:.1f}% |",
+        "",
+        "#### 予測1-3位",
+        "",
+        "| 指標 | 値 |",
+        "|------|------|",
+        f"| 対象レース | {review_data.get('tansho', {}).get('top3', {}).get('total_races', 0)} |",
+        f"| 賭け数 | {review_data.get('tansho', {}).get('top3', {}).get('total_bets', 0)} |",
+        f"| 的中数 | {review_data.get('tansho', {}).get('top3', {}).get('hits', 0)} |",
+        f"| 的中率 | {review_data.get('tansho', {}).get('top3', {}).get('hit_rate', 0.0) * 100:.1f}% |",
+        f"| 投資額 | {review_data.get('tansho', {}).get('top3', {}).get('investment', 0):,}円 |",
+        f"| 払戻額 | {review_data.get('tansho', {}).get('top3', {}).get('payout', 0):,}円 |",
+        f"| 回収率 | {review_data.get('tansho', {}).get('top3', {}).get('return_rate', 0.0) * 100:.1f}% |",
         "",
         "### レース別結果",
         "",
@@ -2025,6 +2294,9 @@ def review_day(date_str: str | None, venue: str, db: str):
     scraper = RaceDetailScraper()
     actual_results = {}
     payouts = {}
+    tansho_payouts = {}
+    umaren_payouts = {}
+    sanrenpuku_payouts = {}
 
     for race in predictions["races"]:
         race_number = race["race_number"]
@@ -2054,6 +2326,21 @@ def review_day(date_str: str | None, venue: str, db: str):
             else:
                 click.echo(f"{race_number}R: 結果データなし")
 
+            # 馬連払戻金を取得
+            umaren_data = scraper.fetch_umaren_payout(race_id)
+            if umaren_data:
+                umaren_payouts[race_number] = umaren_data
+
+            # 3連複払戻金を取得
+            sanrenpuku_data = scraper.fetch_sanrenpuku_payout(race_id)
+            if sanrenpuku_data:
+                sanrenpuku_payouts[race_number] = sanrenpuku_data
+
+            # 単勝払戻金を取得
+            tansho_data = scraper.fetch_tansho_payout(race_id)
+            if tansho_data:
+                tansho_payouts[race_number] = tansho_data
+
         except Exception as e:
             click.echo(f"{race_number}R: 結果取得エラー - {e}")
 
@@ -2061,6 +2348,18 @@ def review_day(date_str: str | None, venue: str, db: str):
 
     # シミュレーションを計算
     review_data = _calculate_fukusho_simulation(predictions, actual_results, payouts)
+
+    # 馬連シミュレーション
+    umaren_data = _calculate_umaren_simulation(predictions, umaren_payouts)
+    review_data["umaren"] = umaren_data
+
+    # 3連複シミュレーション
+    sanrenpuku_data = _calculate_sanrenpuku_simulation(predictions, sanrenpuku_payouts)
+    review_data["sanrenpuku"] = sanrenpuku_data
+
+    # 単勝シミュレーション
+    tansho_data = _calculate_tansho_simulation(predictions, tansho_payouts)
+    review_data["tansho"] = tansho_data
 
     # 検証結果をMarkdownに追記
     _append_review_to_markdown(str(prediction_file), review_data)
@@ -2087,6 +2386,32 @@ def review_day(date_str: str | None, venue: str, db: str):
     click.echo(f"  投資額: {review_data['top3']['investment']}円")
     click.echo(f"  払戻額: {review_data['top3']['payout']}円")
     click.echo(f"  回収率: {review_data['top3']['return_rate'] * 100:.1f}%")
+    click.echo("")
+    click.echo("【馬連（予測1-2, 1-3, 2-3の3点買い）】")
+    click.echo(f"  対象レース数: {review_data['umaren']['total_races']}")
+    click.echo(f"  的中数: {review_data['umaren']['hits']}")
+    click.echo(f"  的中率: {review_data['umaren']['hit_rate'] * 100:.1f}%")
+    click.echo(f"  投資額: {review_data['umaren']['investment']}円")
+    click.echo(f"  払戻額: {review_data['umaren']['payout']}円")
+    click.echo(f"  回収率: {review_data['umaren']['return_rate'] * 100:.1f}%")
+    click.echo("")
+    click.echo("【3連複（予測1-2-3の1点買い）】")
+    click.echo(f"  対象レース数: {review_data['sanrenpuku']['total_races']}")
+    click.echo(f"  的中数: {review_data['sanrenpuku']['hits']}")
+    click.echo(f"  的中率: {review_data['sanrenpuku']['hit_rate'] * 100:.1f}%")
+    click.echo(f"  投資額: {review_data['sanrenpuku']['investment']}円")
+    click.echo(f"  払戻額: {review_data['sanrenpuku']['payout']}円")
+    click.echo(f"  回収率: {review_data['sanrenpuku']['return_rate'] * 100:.1f}%")
+    click.echo("")
+    click.echo("=== 単勝シミュレーション ===")
+    click.echo("")
+    click.echo("予測1位:")
+    click.echo(f"  レース数: {review_data['tansho']['top1']['total_races']}, 的中: {review_data['tansho']['top1']['hits']}, 的中率: {review_data['tansho']['top1']['hit_rate'] * 100:.1f}%")
+    click.echo(f"  投資額: {review_data['tansho']['top1']['investment']:,}円, 払戻: {review_data['tansho']['top1']['payout']:,}円, 回収率: {review_data['tansho']['top1']['return_rate'] * 100:.1f}%")
+    click.echo("")
+    click.echo("予測1-3位:")
+    click.echo(f"  レース数: {review_data['tansho']['top3']['total_races']}, 賭け数: {review_data['tansho']['top3']['total_bets']}, 的中: {review_data['tansho']['top3']['hits']}, 的中率: {review_data['tansho']['top3']['hit_rate'] * 100:.1f}%")
+    click.echo(f"  投資額: {review_data['tansho']['top3']['investment']:,}円, 払戻: {review_data['tansho']['top3']['payout']:,}円, 回収率: {review_data['tansho']['top3']['return_rate'] * 100:.1f}%")
     click.echo("")
     click.echo("完了")
 
