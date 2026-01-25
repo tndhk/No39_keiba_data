@@ -156,7 +156,25 @@ keiba train --db data/keiba.db --output data/models/model_202601.joblib
 ## アーキテクチャ
 
 ```
-CLI (keiba/cli.py)
+CLI (keiba/cli/)
+    │
+    ├── commands/                # CLIコマンド
+    │   ├── scrape.py           # scrape, scrape-horses
+    │   ├── analyze.py          # analyze
+    │   ├── predict.py          # predict, predict-day
+    │   ├── train.py            # train
+    │   ├── review.py           # review-day
+    │   ├── backtest.py         # backtest, backtest-fukusho
+    │   └── migrate.py          # migrate-grades
+    │
+    ├── formatters/              # 出力フォーマッタ
+    │   ├── markdown.py         # Markdown保存/パース/追記
+    │   └── simulation.py       # 複勝/単勝/馬連/三連複シミュレーション
+    │
+    └── utils/                   # CLIユーティリティ
+        ├── url_parser.py       # URL解析
+        ├── date_parser.py      # 日付パース
+        └── table_printer.py    # テーブル出力
     │
     ├── Scrapers (keiba/scrapers/)
     │   ├── RaceListScraper      # db.netkeiba.com/race/list/
@@ -165,7 +183,12 @@ CLI (keiba/cli.py)
     │   └── ShutubaScraper       # race.netkeiba.com/race/shutuba.html
     │
     ├── Services (keiba/services/)
-    │   └── PredictionService    # ファクター計算とML予測のオーケストレーション
+    │   ├── PredictionService    # ファクター計算とML予測のオーケストレーション
+    │   ├── TrainingService      # 学習データ構築
+    │   └── AnalysisService      # 過去レース分析
+    │
+    ├── Repositories (keiba/repositories/)
+    │   └── RaceResultRepository # レース結果データアクセス
     │
     ├── Analyzers (keiba/analyzers/)
     │   ├── ScoreCalculator      # 重み付き総合スコア算出
@@ -187,6 +210,9 @@ CLI (keiba/cli.py)
     ├── Backtest (keiba/backtest/)
     │   ├── FukushoSimulator     # 複勝シミュレーション
     │   └── Backtester           # 過去データ検証
+    │
+    ├── Utils (keiba/utils/)
+    │   └── grade_extractor      # グレード抽出
     │
     └── DB (keiba/db.py) → SQLite
 ```

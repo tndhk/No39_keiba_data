@@ -18,7 +18,7 @@ class TestParsePredictionsMarkdown:
 
     def test_parses_basic_prediction_file(self, tmp_path):
         """基本的な予測ファイルをパースできる"""
-        from keiba.cli import _parse_predictions_markdown
+        from keiba.cli.formatters.markdown import parse_predictions_markdown as _parse_predictions_markdown
 
         content = """# 2026-01-24 中山 予測結果
 
@@ -56,7 +56,7 @@ class TestParsePredictionsMarkdown:
 
     def test_parses_race_number_from_header(self, tmp_path):
         """レース番号をヘッダーから正しく抽出する"""
-        from keiba.cli import _parse_predictions_markdown
+        from keiba.cli.formatters.markdown import parse_predictions_markdown as _parse_predictions_markdown
 
         content = """# 2026-01-24 中山 予測結果
 
@@ -78,7 +78,7 @@ class TestParsePredictionsMarkdown:
 
     def test_returns_empty_for_nonexistent_file(self, tmp_path):
         """存在しないファイルは空の結果を返す"""
-        from keiba.cli import _parse_predictions_markdown
+        from keiba.cli.formatters.markdown import parse_predictions_markdown as _parse_predictions_markdown
 
         result = _parse_predictions_markdown(str(tmp_path / "nonexistent.md"))
 
@@ -86,7 +86,7 @@ class TestParsePredictionsMarkdown:
 
     def test_parses_prediction_without_ml_probability(self, tmp_path):
         """ML確率が'-'の予測もパースできる"""
-        from keiba.cli import _parse_predictions_markdown
+        from keiba.cli.formatters.markdown import parse_predictions_markdown as _parse_predictions_markdown
 
         content = """# 2026-01-24 中山 予測結果
 
@@ -111,7 +111,7 @@ class TestCalculateFukushoSimulation:
 
     def test_calculates_hit_on_predicted_first(self):
         """予測1位が3着以内で的中と判定する"""
-        from keiba.cli import _calculate_fukusho_simulation
+        from keiba.cli.formatters.simulation import calculate_fukusho_simulation as _calculate_fukusho_simulation
 
         predictions = {
             "races": [
@@ -140,7 +140,7 @@ class TestCalculateFukushoSimulation:
 
     def test_calculates_miss_when_predicted_first_not_in_top3(self):
         """予測1位が3着以内でない場合はミスと判定する"""
-        from keiba.cli import _calculate_fukusho_simulation
+        from keiba.cli.formatters.simulation import calculate_fukusho_simulation as _calculate_fukusho_simulation
 
         predictions = {
             "races": [
@@ -169,7 +169,7 @@ class TestCalculateFukushoSimulation:
 
     def test_calculates_top3_simulation(self):
         """予測1-3位に各100円賭けたシミュレーションを計算する"""
-        from keiba.cli import _calculate_fukusho_simulation
+        from keiba.cli.formatters.simulation import calculate_fukusho_simulation as _calculate_fukusho_simulation
 
         predictions = {
             "races": [
@@ -198,7 +198,7 @@ class TestCalculateFukushoSimulation:
 
     def test_calculates_hit_rate(self):
         """的中率を計算する"""
-        from keiba.cli import _calculate_fukusho_simulation
+        from keiba.cli.formatters.simulation import calculate_fukusho_simulation as _calculate_fukusho_simulation
 
         predictions = {
             "races": [
@@ -233,7 +233,7 @@ class TestCalculateFukushoSimulation:
 
     def test_calculates_return_rate(self):
         """回収率を計算する"""
-        from keiba.cli import _calculate_fukusho_simulation
+        from keiba.cli.formatters.simulation import calculate_fukusho_simulation as _calculate_fukusho_simulation
 
         predictions = {
             "races": [
@@ -259,7 +259,7 @@ class TestCalculateFukushoSimulation:
 
     def test_handles_empty_predictions(self):
         """予測データがない場合は空の結果を返す"""
-        from keiba.cli import _calculate_fukusho_simulation
+        from keiba.cli.formatters.simulation import calculate_fukusho_simulation as _calculate_fukusho_simulation
 
         predictions = {"races": []}
         actual_results = {}
@@ -277,7 +277,7 @@ class TestAppendReviewToMarkdown:
 
     def test_appends_review_section_to_file(self, tmp_path):
         """検証結果セクションをファイルに追記する"""
-        from keiba.cli import _append_review_to_markdown
+        from keiba.cli.formatters.markdown import append_review_to_markdown as _append_review_to_markdown
 
         original_content = """# 2026-01-24 中山 予測結果
 
@@ -331,7 +331,7 @@ class TestAppendReviewToMarkdown:
 
     def test_creates_review_datetime(self, tmp_path):
         """検証日時がセクションに含まれる"""
-        from keiba.cli import _append_review_to_markdown
+        from keiba.cli.formatters.markdown import append_review_to_markdown as _append_review_to_markdown
 
         original_content = "# Test\n"
         filepath = tmp_path / "test.md"
@@ -419,10 +419,10 @@ class TestReviewDayCommand:
 class TestReviewDayExecution:
     """review-dayコマンドの実行テスト"""
 
-    @patch("keiba.cli._append_review_to_markdown")
-    @patch("keiba.cli._calculate_fukusho_simulation")
-    @patch("keiba.cli._parse_predictions_markdown")
-    @patch("keiba.cli.RaceDetailScraper")
+    @patch("keiba.cli.commands.review.append_review_to_markdown")
+    @patch("keiba.cli.commands.review.calculate_fukusho_simulation")
+    @patch("keiba.cli.commands.review.parse_predictions_markdown")
+    @patch("keiba.cli.commands.review.RaceDetailScraper")
     def test_review_day_reads_prediction_file(
         self,
         mock_scraper_class,
@@ -465,10 +465,10 @@ class TestReviewDayExecution:
         call_args = mock_parse.call_args[0][0]
         assert "2026-01-24-nakayama.md" in call_args
 
-    @patch("keiba.cli._append_review_to_markdown")
-    @patch("keiba.cli._calculate_fukusho_simulation")
-    @patch("keiba.cli._parse_predictions_markdown")
-    @patch("keiba.cli.RaceDetailScraper")
+    @patch("keiba.cli.commands.review.append_review_to_markdown")
+    @patch("keiba.cli.commands.review.calculate_fukusho_simulation")
+    @patch("keiba.cli.commands.review.parse_predictions_markdown")
+    @patch("keiba.cli.commands.review.RaceDetailScraper")
     def test_review_day_fetches_race_results(
         self,
         mock_scraper_class,
@@ -532,10 +532,10 @@ class TestReviewDayExecution:
         # スクレイパーが呼ばれたことを確認
         mock_scraper.fetch_payouts.assert_called()
 
-    @patch("keiba.cli._append_review_to_markdown")
-    @patch("keiba.cli._calculate_fukusho_simulation")
-    @patch("keiba.cli._parse_predictions_markdown")
-    @patch("keiba.cli.RaceDetailScraper")
+    @patch("keiba.cli.commands.review.append_review_to_markdown")
+    @patch("keiba.cli.commands.review.calculate_fukusho_simulation")
+    @patch("keiba.cli.commands.review.parse_predictions_markdown")
+    @patch("keiba.cli.commands.review.RaceDetailScraper")
     def test_review_day_appends_review_to_markdown(
         self,
         mock_scraper_class,
@@ -586,10 +586,10 @@ class TestReviewDayExecution:
         # 追記関数が呼ばれたことを確認
         mock_append.assert_called_once()
 
-    @patch("keiba.cli._append_review_to_markdown")
-    @patch("keiba.cli._calculate_fukusho_simulation")
-    @patch("keiba.cli._parse_predictions_markdown")
-    @patch("keiba.cli.RaceDetailScraper")
+    @patch("keiba.cli.commands.review.append_review_to_markdown")
+    @patch("keiba.cli.commands.review.calculate_fukusho_simulation")
+    @patch("keiba.cli.commands.review.parse_predictions_markdown")
+    @patch("keiba.cli.commands.review.RaceDetailScraper")
     def test_review_day_shows_summary(
         self,
         mock_scraper_class,
@@ -644,7 +644,7 @@ class TestReviewDayExecution:
 class TestReviewDayPredictionFileNotFound:
     """予測ファイルが見つからない場合のテスト"""
 
-    @patch("keiba.cli._parse_predictions_markdown")
+    @patch("keiba.cli.commands.review.parse_predictions_markdown")
     def test_shows_error_when_prediction_file_not_found(self, mock_parse):
         """予測ファイルがない場合はエラーメッセージを表示する"""
         # パース結果を空に設定（ファイルが見つからなかった場合と同様）
@@ -681,7 +681,7 @@ class TestCalculateUmarenSimulation:
 
     def test_generates_three_combinations_from_top3(self):
         """予測上位3頭から3組の馬連を生成する: (1,2), (1,3), (2,3)"""
-        from keiba.cli import _calculate_umaren_simulation
+        from keiba.cli.formatters.simulation import calculate_umaren_simulation as _calculate_umaren_simulation
 
         predictions = {
             "races": [
@@ -709,7 +709,7 @@ class TestCalculateUmarenSimulation:
 
     def test_hit_when_combination_matches(self):
         """馬連ペアがset()として一致すれば的中"""
-        from keiba.cli import _calculate_umaren_simulation
+        from keiba.cli.formatters.simulation import calculate_umaren_simulation as _calculate_umaren_simulation
 
         predictions = {
             "races": [
@@ -735,7 +735,7 @@ class TestCalculateUmarenSimulation:
 
     def test_miss_when_combination_not_in_predictions(self):
         """馬連ペアが予測3組に含まれない場合は外れ"""
-        from keiba.cli import _calculate_umaren_simulation
+        from keiba.cli.formatters.simulation import calculate_umaren_simulation as _calculate_umaren_simulation
 
         predictions = {
             "races": [
@@ -761,7 +761,7 @@ class TestCalculateUmarenSimulation:
 
     def test_payout_added_once_per_hit(self):
         """的中時は払戻金を1回だけ加算（3点のうち1点のみ的中）"""
-        from keiba.cli import _calculate_umaren_simulation
+        from keiba.cli.formatters.simulation import calculate_umaren_simulation as _calculate_umaren_simulation
 
         predictions = {
             "races": [
@@ -786,7 +786,7 @@ class TestCalculateUmarenSimulation:
 
     def test_calculates_hit_rate(self):
         """的中率を計算する"""
-        from keiba.cli import _calculate_umaren_simulation
+        from keiba.cli.formatters.simulation import calculate_umaren_simulation as _calculate_umaren_simulation
 
         predictions = {
             "races": [
@@ -821,7 +821,7 @@ class TestCalculateUmarenSimulation:
 
     def test_calculates_return_rate(self):
         """回収率を計算する"""
-        from keiba.cli import _calculate_umaren_simulation
+        from keiba.cli.formatters.simulation import calculate_umaren_simulation as _calculate_umaren_simulation
 
         predictions = {
             "races": [
@@ -848,7 +848,7 @@ class TestCalculateUmarenSimulation:
 
     def test_handles_empty_predictions(self):
         """予測データがない場合は空の結果を返す"""
-        from keiba.cli import _calculate_umaren_simulation
+        from keiba.cli.formatters.simulation import calculate_umaren_simulation as _calculate_umaren_simulation
 
         predictions = {"races": []}
         umaren_payouts = {}
@@ -864,7 +864,7 @@ class TestCalculateUmarenSimulation:
 
     def test_skips_race_without_umaren_payout(self):
         """umaren_payoutsにないレースはスキップ"""
-        from keiba.cli import _calculate_umaren_simulation
+        from keiba.cli.formatters.simulation import calculate_umaren_simulation as _calculate_umaren_simulation
 
         predictions = {
             "races": [
@@ -886,7 +886,7 @@ class TestCalculateUmarenSimulation:
 
     def test_skips_race_with_less_than_3_predictions(self):
         """予測が3頭未満のレースはスキップ"""
-        from keiba.cli import _calculate_umaren_simulation
+        from keiba.cli.formatters.simulation import calculate_umaren_simulation as _calculate_umaren_simulation
 
         predictions = {
             "races": [
@@ -910,7 +910,7 @@ class TestCalculateUmarenSimulation:
 
     def test_multiple_races_accumulation(self):
         """複数レースの累計を正しく計算する"""
-        from keiba.cli import _calculate_umaren_simulation
+        from keiba.cli.formatters.simulation import calculate_umaren_simulation as _calculate_umaren_simulation
 
         predictions = {
             "races": [
@@ -959,7 +959,7 @@ class TestCalculateSanrenpukuSimulation:
 
     def test_generates_one_combination_from_top3(self):
         """予測上位3頭から1組の3連複を生成する: {1,2,3}"""
-        from keiba.cli import _calculate_sanrenpuku_simulation
+        from keiba.cli.formatters.simulation import calculate_sanrenpuku_simulation as _calculate_sanrenpuku_simulation
 
         predictions = {
             "races": [
@@ -986,7 +986,7 @@ class TestCalculateSanrenpukuSimulation:
 
     def test_hit_when_combination_matches(self):
         """3連複トリオがset()として一致すれば的中"""
-        from keiba.cli import _calculate_sanrenpuku_simulation
+        from keiba.cli.formatters.simulation import calculate_sanrenpuku_simulation as _calculate_sanrenpuku_simulation
 
         predictions = {
             "races": [
@@ -1012,7 +1012,7 @@ class TestCalculateSanrenpukuSimulation:
 
     def test_miss_when_combination_not_in_predictions(self):
         """3連複トリオが予測と一致しない場合は外れ"""
-        from keiba.cli import _calculate_sanrenpuku_simulation
+        from keiba.cli.formatters.simulation import calculate_sanrenpuku_simulation as _calculate_sanrenpuku_simulation
 
         predictions = {
             "races": [
@@ -1038,7 +1038,7 @@ class TestCalculateSanrenpukuSimulation:
 
     def test_miss_when_only_two_horses_match(self):
         """3頭中2頭だけ一致しても外れ"""
-        from keiba.cli import _calculate_sanrenpuku_simulation
+        from keiba.cli.formatters.simulation import calculate_sanrenpuku_simulation as _calculate_sanrenpuku_simulation
 
         predictions = {
             "races": [
@@ -1064,7 +1064,7 @@ class TestCalculateSanrenpukuSimulation:
 
     def test_calculates_hit_rate(self):
         """的中率を計算する"""
-        from keiba.cli import _calculate_sanrenpuku_simulation
+        from keiba.cli.formatters.simulation import calculate_sanrenpuku_simulation as _calculate_sanrenpuku_simulation
 
         predictions = {
             "races": [
@@ -1099,7 +1099,7 @@ class TestCalculateSanrenpukuSimulation:
 
     def test_calculates_return_rate(self):
         """回収率を計算する"""
-        from keiba.cli import _calculate_sanrenpuku_simulation
+        from keiba.cli.formatters.simulation import calculate_sanrenpuku_simulation as _calculate_sanrenpuku_simulation
 
         predictions = {
             "races": [
@@ -1126,7 +1126,7 @@ class TestCalculateSanrenpukuSimulation:
 
     def test_handles_empty_predictions(self):
         """予測データがない場合は空の結果を返す"""
-        from keiba.cli import _calculate_sanrenpuku_simulation
+        from keiba.cli.formatters.simulation import calculate_sanrenpuku_simulation as _calculate_sanrenpuku_simulation
 
         predictions = {"races": []}
         sanrenpuku_payouts = {}
@@ -1142,7 +1142,7 @@ class TestCalculateSanrenpukuSimulation:
 
     def test_skips_race_without_sanrenpuku_payout(self):
         """sanrenpuku_payoutsにないレースはスキップ"""
-        from keiba.cli import _calculate_sanrenpuku_simulation
+        from keiba.cli.formatters.simulation import calculate_sanrenpuku_simulation as _calculate_sanrenpuku_simulation
 
         predictions = {
             "races": [
@@ -1164,7 +1164,7 @@ class TestCalculateSanrenpukuSimulation:
 
     def test_skips_race_with_less_than_3_predictions(self):
         """予測が3頭未満のレースはスキップ"""
-        from keiba.cli import _calculate_sanrenpuku_simulation
+        from keiba.cli.formatters.simulation import calculate_sanrenpuku_simulation as _calculate_sanrenpuku_simulation
 
         predictions = {
             "races": [
@@ -1188,7 +1188,7 @@ class TestCalculateSanrenpukuSimulation:
 
     def test_multiple_races_accumulation(self):
         """複数レースの累計を正しく計算する"""
-        from keiba.cli import _calculate_sanrenpuku_simulation
+        from keiba.cli.formatters.simulation import calculate_sanrenpuku_simulation as _calculate_sanrenpuku_simulation
 
         predictions = {
             "races": [
@@ -1242,7 +1242,7 @@ class TestCalculateTanshoSimulation:
 
     def test_top1_hit_when_predicted_first_wins(self):
         """top1: 予測1位が1着で的中と判定する"""
-        from keiba.cli import _calculate_tansho_simulation
+        from keiba.cli.formatters.simulation import calculate_tansho_simulation as _calculate_tansho_simulation
 
         predictions = {
             "races": [
@@ -1268,7 +1268,7 @@ class TestCalculateTanshoSimulation:
 
     def test_top1_miss_when_predicted_first_not_win(self):
         """top1: 予測1位が1着でない場合はミスと判定する"""
-        from keiba.cli import _calculate_tansho_simulation
+        from keiba.cli.formatters.simulation import calculate_tansho_simulation as _calculate_tansho_simulation
 
         predictions = {
             "races": [
@@ -1294,7 +1294,7 @@ class TestCalculateTanshoSimulation:
 
     def test_top1_investment_calculation(self):
         """top1: 投資額はレース数 x 100円"""
-        from keiba.cli import _calculate_tansho_simulation
+        from keiba.cli.formatters.simulation import calculate_tansho_simulation as _calculate_tansho_simulation
 
         predictions = {
             "races": [
@@ -1325,7 +1325,7 @@ class TestCalculateTanshoSimulation:
 
     def test_top3_hit_when_any_predicted_horse_wins(self):
         """top3: 予測1-3位のいずれかが1着で的中と判定する"""
-        from keiba.cli import _calculate_tansho_simulation
+        from keiba.cli.formatters.simulation import calculate_tansho_simulation as _calculate_tansho_simulation
 
         predictions = {
             "races": [
@@ -1351,7 +1351,7 @@ class TestCalculateTanshoSimulation:
 
     def test_top3_miss_when_no_predicted_horse_wins(self):
         """top3: 予測1-3位のいずれも1着でない場合はミス"""
-        from keiba.cli import _calculate_tansho_simulation
+        from keiba.cli.formatters.simulation import calculate_tansho_simulation as _calculate_tansho_simulation
 
         predictions = {
             "races": [
@@ -1376,7 +1376,7 @@ class TestCalculateTanshoSimulation:
 
     def test_top3_investment_calculation(self):
         """top3: 投資額はレース数 x 300円（3頭に各100円）"""
-        from keiba.cli import _calculate_tansho_simulation
+        from keiba.cli.formatters.simulation import calculate_tansho_simulation as _calculate_tansho_simulation
 
         predictions = {
             "races": [
@@ -1411,7 +1411,7 @@ class TestCalculateTanshoSimulation:
 
     def test_top3_payout_added_once_per_hit(self):
         """top3: 的中時は払戻金を1回だけ加算（予測1位と2位の両方が的中しても1回）"""
-        from keiba.cli import _calculate_tansho_simulation
+        from keiba.cli.formatters.simulation import calculate_tansho_simulation as _calculate_tansho_simulation
 
         predictions = {
             "races": [
@@ -1438,7 +1438,7 @@ class TestCalculateTanshoSimulation:
 
     def test_calculates_hit_rate_for_top1(self):
         """top1: 的中率を計算する"""
-        from keiba.cli import _calculate_tansho_simulation
+        from keiba.cli.formatters.simulation import calculate_tansho_simulation as _calculate_tansho_simulation
 
         predictions = {
             "races": [
@@ -1465,7 +1465,7 @@ class TestCalculateTanshoSimulation:
 
     def test_calculates_hit_rate_for_top3(self):
         """top3: 的中率を計算する"""
-        from keiba.cli import _calculate_tansho_simulation
+        from keiba.cli.formatters.simulation import calculate_tansho_simulation as _calculate_tansho_simulation
 
         predictions = {
             "races": [
@@ -1500,7 +1500,7 @@ class TestCalculateTanshoSimulation:
 
     def test_calculates_return_rate_for_top1(self):
         """top1: 回収率を計算する"""
-        from keiba.cli import _calculate_tansho_simulation
+        from keiba.cli.formatters.simulation import calculate_tansho_simulation as _calculate_tansho_simulation
 
         predictions = {
             "races": [
@@ -1523,7 +1523,7 @@ class TestCalculateTanshoSimulation:
 
     def test_calculates_return_rate_for_top3(self):
         """top3: 回収率を計算する"""
-        from keiba.cli import _calculate_tansho_simulation
+        from keiba.cli.formatters.simulation import calculate_tansho_simulation as _calculate_tansho_simulation
 
         predictions = {
             "races": [
@@ -1550,7 +1550,7 @@ class TestCalculateTanshoSimulation:
 
     def test_handles_empty_predictions(self):
         """予測データがない場合は空の結果を返す"""
-        from keiba.cli import _calculate_tansho_simulation
+        from keiba.cli.formatters.simulation import calculate_tansho_simulation as _calculate_tansho_simulation
 
         predictions = {"races": []}
         tansho_payouts = {}
@@ -1573,7 +1573,7 @@ class TestCalculateTanshoSimulation:
 
     def test_skips_race_without_tansho_payout(self):
         """tansho_payoutsにないレースはスキップ"""
-        from keiba.cli import _calculate_tansho_simulation
+        from keiba.cli.formatters.simulation import calculate_tansho_simulation as _calculate_tansho_simulation
 
         predictions = {
             "races": [
@@ -1596,7 +1596,7 @@ class TestCalculateTanshoSimulation:
 
     def test_skips_race_with_no_predictions(self):
         """予測がないレースはスキップ"""
-        from keiba.cli import _calculate_tansho_simulation
+        from keiba.cli.formatters.simulation import calculate_tansho_simulation as _calculate_tansho_simulation
 
         predictions = {
             "races": [
@@ -1617,7 +1617,7 @@ class TestCalculateTanshoSimulation:
 
     def test_top3_with_less_than_3_predictions(self):
         """予測が3頭未満のレースはtop3の賭け数がその頭数になる"""
-        from keiba.cli import _calculate_tansho_simulation
+        from keiba.cli.formatters.simulation import calculate_tansho_simulation as _calculate_tansho_simulation
 
         predictions = {
             "races": [
@@ -1649,7 +1649,7 @@ class TestCalculateTanshoSimulation:
 
     def test_multiple_races_accumulation(self):
         """複数レースの累計を正しく計算する"""
-        from keiba.cli import _calculate_tansho_simulation
+        from keiba.cli.formatters.simulation import calculate_tansho_simulation as _calculate_tansho_simulation
 
         predictions = {
             "races": [

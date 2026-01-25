@@ -1,6 +1,6 @@
 # Data Models Codemap
 
-> Freshness: 2026-01-25 (Verified: PredictionResult, combined_score, FukushoSimulator)
+> Freshness: 2026-01-26 (Verified: CLI refactoring, simulation types, payout methods)
 
 ## Database Schema (SQLite)
 

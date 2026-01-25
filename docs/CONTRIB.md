@@ -2,7 +2,7 @@
 
 競馬データ収集システムの開発ワークフローガイド。
 
-> Freshness: 2026-01-25 (Verified: combined_score, train command, backtest-fukusho, tansho simulation)
+> Freshness: 2026-01-26 (Verified: CLI package refactoring, Services layer, Repositories layer)
 
 ## 環境セットアップ
 
@@ -34,34 +34,60 @@ pip install -e ".[dev]"
 
 ```
 keiba/
-├── models/       # SQLAlchemyモデル定義
-│   └── entry.py  # 出馬表DTO（RaceEntry, ShutubaData）
-├── scrapers/     # Webスクレイパー
-│   └── shutuba.py  # 出馬表スクレイパー（ShutubaScraper）
-├── services/     # ビジネスロジックサービス
-│   └── prediction_service.py  # 予測サービス（PredictionService）
-├── analyzers/    # レース分析モジュール
-│   └── factors/  # スコア算出ファクター（7因子）
-├── ml/           # 機械学習予測モジュール
-│   ├── feature_builder.py  # 特徴量構築
-│   ├── trainer.py          # LightGBMモデル学習
-│   ├── predictor.py        # 予測実行
-│   └── model_utils.py      # モデルユーティリティ（最新モデル検索等）
-├── backtest/     # バックテストモジュール
-│   ├── backtester.py  # BacktestEngine（セッション管理、バッチクエリ）
-│   ├── metrics.py     # メトリクス計算
-│   └── reporter.py    # レポート出力
-├── config/       # 設定（分析ウェイト、血統マスタ等）
-├── utils/        # ユーティリティ（グレード抽出等）
-├── db.py         # データベース接続
-└── cli.py        # CLIエントリーポイント
++-- cli/                    # CLIパッケージ
+|   +-- __init__.py        # エントリーポイント（main）
+|   +-- commands/          # CLIコマンドモジュール
+|   |   +-- scrape.py     # scrape, scrape-horses
+|   |   +-- analyze.py    # analyze
+|   |   +-- predict.py    # predict, predict-day
+|   |   +-- train.py      # train
+|   |   +-- review.py     # review-day
+|   |   +-- backtest.py   # backtest, backtest-fukusho
+|   |   +-- migrate.py    # migrate-grades
+|   +-- formatters/        # 出力フォーマッタ
+|   |   +-- markdown.py   # Markdown保存/パース
+|   |   +-- simulation.py # 馬券シミュレーション計算
+|   +-- utils/             # CLIユーティリティ
+|       +-- url_parser.py    # URL解析
+|       +-- date_parser.py   # 日付パース
+|       +-- table_printer.py # テーブル出力
++-- models/                 # SQLAlchemyモデル定義
+|   +-- entry.py           # 出馬表DTO（RaceEntry, ShutubaData）
++-- scrapers/               # Webスクレイパー
+|   +-- shutuba.py         # 出馬表スクレイパー（ShutubaScraper）
++-- services/               # ビジネスロジックサービス
+|   +-- prediction_service.py   # 予測サービス（PredictionService）
+|   +-- training_service.py     # 学習データ構築サービス
+|   +-- analysis_service.py     # 過去レース分析サービス
++-- repositories/           # リポジトリ層
+|   +-- race_result_repository.py  # レース結果データアクセス
++-- analyzers/              # レース分析モジュール
+|   +-- factors/           # スコア算出ファクター（7因子）
++-- ml/                     # 機械学習予測モジュール
+|   +-- feature_builder.py # 特徴量構築
+|   +-- trainer.py         # LightGBMモデル学習
+|   +-- predictor.py       # 予測実行
+|   +-- model_utils.py     # モデルユーティリティ（最新モデル検索等）
++-- backtest/               # バックテストモジュール
+|   +-- backtester.py      # BacktestEngine（セッション管理、バッチクエリ）
+|   +-- fukusho_simulator.py # 複勝シミュレーション
+|   +-- metrics.py         # メトリクス計算
+|   +-- reporter.py        # レポート出力
++-- config/                 # 設定（分析ウェイト、血統マスタ等）
++-- utils/                  # ユーティリティ
+|   +-- grade_extractor.py # グレード抽出
++-- db.py                   # データベース接続
++-- cli.py                  # 後方互換性（cli/__init__.pyへリダイレクト）
 scripts/
-└── add_indexes.py  # 既存DBへのインデックス追加スクリプト
++-- add_indexes.py          # 既存DBへのインデックス追加スクリプト
 tests/
-├── fixtures/     # テスト用HTMLフィクスチャ
-├── ml/           # ML関連テスト
-├── test_db_indexes.py  # DBインデックス存在確認テスト
-└── test_*.py     # テストファイル
++-- fixtures/               # テスト用HTMLフィクスチャ
++-- cli/                    # CLIコマンドテスト
++-- services/               # サービス層テスト
++-- ml/                     # ML関連テスト
++-- backtest/               # バックテストテスト
++-- test_db_indexes.py      # DBインデックス存在確認テスト
++-- test_*.py               # テストファイル
 ```
 
 ## CLIコマンド
@@ -426,9 +452,31 @@ pytest tests/ml/ -v
 2. モデル変更が必要な場合は `keiba/models/` を更新
 3. スクレイパーを `keiba/scrapers/` に追加
 4. `keiba/scrapers/__init__.py` でエクスポート
-5. CLI コマンドを `keiba/cli.py` に追加
-6. テストを `tests/` に追加
-7. 全テストがパスすることを確認
+5. CLIコマンドを `keiba/cli/commands/` に追加
+6. `keiba/cli/__init__.py` でコマンドを登録
+7. テストを `tests/` に追加
+8. 全テストがパスすることを確認
+
+### CLIコマンド追加例
+
+```python
+# keiba/cli/commands/new_command.py
+import click
+from keiba.db import get_engine, get_session
+
+@click.command()
+@click.option("--db", required=True, help="DBファイルパス")
+def new_command(db: str):
+    """新しいコマンドの説明"""
+    engine = get_engine(db)
+    with get_session(engine) as session:
+        # 処理
+        pass
+
+# keiba/cli/__init__.py に追加
+from keiba.cli.commands.new_command import new_command
+main.add_command(new_command)
+```
 
 ### 2. 分析ファクターの追加
 
@@ -444,9 +492,39 @@ pytest tests/ml/ -v
 1. `keiba/ml/feature_builder.py` の `_get_feature_config()` に特徴量を追加
 2. `build_features()` で新しい特徴量の値を計算
 3. テストを `tests/ml/test_feature_builder.py` に追加
-4. 必要に応じて `cli.py` の `_build_training_data()` を更新
+4. 必要に応じて `keiba/services/training_service.py` の `build_training_data()` を更新
 
-### 4. テストの書き方
+### 4. サービス層への機能追加
+
+ビジネスロジックはサービス層（`keiba/services/`）に実装:
+
+```python
+# keiba/services/new_service.py
+def new_business_logic(session, ...):
+    """ビジネスロジックの実装"""
+    pass
+
+# keiba/services/__init__.py でエクスポート
+from keiba.services.new_service import new_business_logic
+__all__ = [..., "new_business_logic"]
+```
+
+### 5. リポジトリ層への機能追加
+
+データアクセスロジックはリポジトリ層（`keiba/repositories/`）に実装:
+
+```python
+# keiba/repositories/new_repository.py
+class NewRepository:
+    def __init__(self, session):
+        self._session = session
+
+    def get_data(self, ...):
+        """データ取得ロジック"""
+        pass
+```
+
+### 6. テストの書き方
 
 ```python
 # tests/fixtures/ にHTMLフィクスチャを追加
@@ -462,7 +540,7 @@ def test_my_scraper(self, mock_fetch, my_fixture_html):
     # テスト実装
 ```
 
-### 5. パフォーマンス最適化
+### 7. パフォーマンス最適化
 
 #### N+1問題の解消
 
@@ -499,7 +577,7 @@ def _get_horses_batch(self, horse_ids: list[str]) -> dict[str, Horse]:
     return {h.id: h for h in horses}
 ```
 
-### 6. データベースマイグレーション
+### 8. データベースマイグレーション
 
 モデルにカラムを追加した場合、既存DBには以下でカラムを追加:
 
@@ -507,7 +585,7 @@ def _get_horses_batch(self, horse_ids: list[str]) -> dict[str, Horse]:
 sqlite3 data/keiba.db "ALTER TABLE tablename ADD COLUMN columnname TYPE;"
 ```
 
-### 7. DBインデックス追加
+### 9. DBインデックス追加
 
 バックテストや大量クエリのパフォーマンス改善のため、インデックスを追加する場合:
 

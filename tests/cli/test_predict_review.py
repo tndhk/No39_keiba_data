@@ -14,13 +14,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from keiba.cli import (
-    _append_review_to_markdown,
-    _calculate_fukusho_simulation,
-    _parse_predictions_markdown,
-    _save_predictions_markdown,
-    main,
+from keiba.cli import main
+from keiba.cli.formatters.markdown import (
+    append_review_to_markdown,
+    parse_predictions_markdown,
+    save_predictions_markdown,
 )
+from keiba.cli.formatters.simulation import calculate_fukusho_simulation
 from keiba.scrapers.race_detail import RaceDetailScraper
 
 
@@ -94,7 +94,7 @@ class TestPredictDayReviewDayIntegration:
         output_dir.mkdir(parents=True)
 
         # predict-dayでMarkdownを生成
-        filepath = _save_predictions_markdown(
+        filepath = save_predictions_markdown(
             predictions_data,
             date_str="2026-01-24",
             venue="中山",
@@ -102,7 +102,7 @@ class TestPredictDayReviewDayIntegration:
         )
 
         # review-dayでパース
-        parsed = _parse_predictions_markdown(filepath)
+        parsed = parse_predictions_markdown(filepath)
 
         assert len(parsed["races"]) == 2
         assert parsed["races"][0]["race_number"] == 1
@@ -134,7 +134,7 @@ class TestPredictDayReviewDayIntegration:
         output_dir = tmp_path / "predictions"
         output_dir.mkdir(parents=True)
 
-        filepath = _save_predictions_markdown(
+        filepath = save_predictions_markdown(
             predictions_data,
             date_str="2026-01-24",
             venue="中山",
@@ -170,7 +170,7 @@ class TestPredictDayReviewDayIntegration:
             ],
         }
 
-        _append_review_to_markdown(filepath, review_data)
+        append_review_to_markdown(filepath, review_data)
 
         # ファイル内容を確認
         content = Path(filepath).read_text(encoding="utf-8")
@@ -209,7 +209,7 @@ class TestPredictDayReviewDayIntegration:
         output_dir.mkdir(parents=True)
 
         # predict-dayでMarkdownを生成
-        filepath = _save_predictions_markdown(
+        filepath = save_predictions_markdown(
             predictions_data,
             date_str="2026-01-24",
             venue="中山",
@@ -217,7 +217,7 @@ class TestPredictDayReviewDayIntegration:
         )
 
         # パース
-        parsed = _parse_predictions_markdown(filepath)
+        parsed = parse_predictions_markdown(filepath)
         assert len(parsed["races"]) == 5
 
         # 実際の結果（一部的中）
@@ -237,7 +237,7 @@ class TestPredictDayReviewDayIntegration:
         }
 
         # シミュレーション計算
-        review_data = _calculate_fukusho_simulation(parsed, actual_results, payouts)
+        review_data = calculate_fukusho_simulation(parsed, actual_results, payouts)
 
         # 5レース中3レース的中
         assert review_data["top1"]["total_races"] == 5
@@ -367,12 +367,12 @@ class TestFetchPayoutsIntegration:
 class TestEndToEndScenario:
     """エンドツーエンドのシナリオテスト"""
 
-    @patch("keiba.cli._save_predictions_markdown")
+    @patch("keiba.cli.commands.predict.save_predictions_markdown")
     @patch("keiba.services.prediction_service.PredictionService")
-    @patch("keiba.scrapers.shutuba.ShutubaScraper")
-    @patch("keiba.cli.RaceListScraper")
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.predict.ShutubaScraper")
+    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.get_session")
+    @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_day_to_review_day_flow(
         self,
         mock_get_engine,
@@ -466,10 +466,10 @@ class TestEndToEndScenario:
         assert call_kwargs["date_str"] == "2026-01-24"
         assert call_kwargs["venue"] == "中山"
 
-    @patch("keiba.cli._append_review_to_markdown")
-    @patch("keiba.cli._calculate_fukusho_simulation")
-    @patch("keiba.cli._parse_predictions_markdown")
-    @patch("keiba.cli.RaceDetailScraper")
+    @patch("keiba.cli.commands.review.append_review_to_markdown")
+    @patch("keiba.cli.commands.review.calculate_fukusho_simulation")
+    @patch("keiba.cli.commands.review.parse_predictions_markdown")
+    @patch("keiba.cli.commands.review.RaceDetailScraper")
     def test_review_day_with_real_results(
         self,
         mock_scraper_class,
@@ -598,7 +598,7 @@ class TestMarkdownFormatValidation:
         output_dir = tmp_path / "predictions"
         output_dir.mkdir(parents=True)
 
-        filepath = _save_predictions_markdown(
+        filepath = save_predictions_markdown(
             predictions_data,
             date_str="2026-01-24",
             venue="中山",
@@ -656,7 +656,7 @@ class TestMarkdownFormatValidation:
             ],
         }
 
-        _append_review_to_markdown(str(filepath), review_data)
+        append_review_to_markdown(str(filepath), review_data)
 
         content = filepath.read_text(encoding="utf-8")
 
@@ -710,7 +710,7 @@ class TestMarkdownFormatValidation:
             ],
         }
 
-        _append_review_to_markdown(str(filepath), review_data)
+        append_review_to_markdown(str(filepath), review_data)
 
         content = filepath.read_text(encoding="utf-8")
 
@@ -753,7 +753,7 @@ class TestSimulationCalculation:
             2: {2: 200, 7: 350, 9: 400},
         }
 
-        result = _calculate_fukusho_simulation(predictions, actual_results, payouts)
+        result = calculate_fukusho_simulation(predictions, actual_results, payouts)
 
         # Top1: 2レース x 100円 = 200円
         assert result["top1"]["investment"] == 200
@@ -782,7 +782,7 @@ class TestSimulationCalculation:
             1: {5: 150, 3: 280, 1: 320},
         }
 
-        result = _calculate_fukusho_simulation(predictions, actual_results, payouts)
+        result = calculate_fukusho_simulation(predictions, actual_results, payouts)
 
         # Top1: 5番が的中 = 150円
         assert result["top1"]["payout"] == 150
@@ -811,7 +811,7 @@ class TestSimulationCalculation:
             1: {10: 150, 11: 280, 12: 320},
         }
 
-        result = _calculate_fukusho_simulation(predictions, actual_results, payouts)
+        result = calculate_fukusho_simulation(predictions, actual_results, payouts)
 
         assert result["top1"]["hits"] == 0
         assert result["top1"]["payout"] == 0
@@ -842,7 +842,7 @@ class TestSimulationCalculation:
             1: {5: 150, 3: 280, 8: 320},
         }
 
-        result = _calculate_fukusho_simulation(predictions, actual_results, payouts)
+        result = calculate_fukusho_simulation(predictions, actual_results, payouts)
 
         assert result["top1"]["hits"] == 1
         assert result["top3"]["hits"] == 3

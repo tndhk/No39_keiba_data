@@ -12,7 +12,8 @@ import pytest
 from click.testing import CliRunner
 from sqlalchemy import select
 
-from keiba.cli import main, _save_race_data, extract_race_id_from_url, parse_race_date
+from keiba.cli import main, extract_race_id_from_url, parse_race_date
+from keiba.cli.commands.scrape import _save_race_data
 from keiba.db import get_engine, get_session, init_db
 from keiba.models import (
     Base,
@@ -394,8 +395,8 @@ class TestScraperDatabaseIntegration:
 class TestCLIIntegration:
     """CLIと全コンポーネントの統合テスト"""
 
-    @patch("keiba.cli.RaceDetailScraper")
-    @patch("keiba.cli.RaceListScraper")
+    @patch("keiba.cli.commands.scrape.RaceDetailScraper")
+    @patch("keiba.cli.commands.scrape.RaceListScraper")
     def test_scrape_command_full_flow(
         self,
         mock_race_list_scraper_class,
@@ -461,8 +462,8 @@ class TestCLIIntegration:
 
         engine.dispose()
 
-    @patch("keiba.cli.RaceDetailScraper")
-    @patch("keiba.cli.RaceListScraper")
+    @patch("keiba.cli.commands.scrape.RaceDetailScraper")
+    @patch("keiba.cli.commands.scrape.RaceListScraper")
     def test_scrape_command_skips_existing_races(
         self,
         mock_race_list_scraper_class,

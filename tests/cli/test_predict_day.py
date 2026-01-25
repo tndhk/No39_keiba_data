@@ -30,13 +30,13 @@ class TestVenueCodeMap:
 
     def test_venue_code_map_exists(self):
         """VENUE_CODE_MAPが定義されている"""
-        from keiba.cli import VENUE_CODE_MAP
+        from keiba.constants import VENUE_CODE_MAP
 
         assert isinstance(VENUE_CODE_MAP, dict)
 
     def test_venue_code_map_has_all_jra_venues(self):
         """VENUE_CODE_MAPに全JRA競馬場が含まれる"""
-        from keiba.cli import VENUE_CODE_MAP
+        from keiba.constants import VENUE_CODE_MAP
 
         expected_venues = [
             "札幌",
@@ -55,7 +55,7 @@ class TestVenueCodeMap:
 
     def test_venue_code_map_values_are_two_digit_strings(self):
         """競馬場コードは2桁の文字列"""
-        from keiba.cli import VENUE_CODE_MAP
+        from keiba.constants import VENUE_CODE_MAP
 
         for venue, code in VENUE_CODE_MAP.items():
             assert isinstance(code, str)
@@ -64,13 +64,13 @@ class TestVenueCodeMap:
 
     def test_nakayama_code_is_06(self):
         """中山の競馬場コードは06"""
-        from keiba.cli import VENUE_CODE_MAP
+        from keiba.constants import VENUE_CODE_MAP
 
         assert VENUE_CODE_MAP["中山"] == "06"
 
     def test_tokyo_code_is_05(self):
         """東京の競馬場コードは05"""
-        from keiba.cli import VENUE_CODE_MAP
+        from keiba.constants import VENUE_CODE_MAP
 
         assert VENUE_CODE_MAP["東京"] == "05"
 
@@ -80,7 +80,7 @@ class TestGetRaceIdsForVenue:
 
     def test_filters_race_ids_by_venue_code(self):
         """指定競馬場のレースIDのみフィルタリングする"""
-        from keiba.cli import _get_race_ids_for_venue
+        from keiba.cli.commands.predict import _get_race_ids_for_venue
 
         race_urls = [
             "https://db.netkeiba.com/race/202606010801/",  # 中山 (06)
@@ -97,7 +97,7 @@ class TestGetRaceIdsForVenue:
 
     def test_returns_empty_list_when_no_match(self):
         """該当競馬場のレースがない場合は空リストを返す"""
-        from keiba.cli import _get_race_ids_for_venue
+        from keiba.cli.commands.predict import _get_race_ids_for_venue
 
         race_urls = [
             "https://db.netkeiba.com/race/202605010801/",  # 東京 (05)
@@ -110,7 +110,7 @@ class TestGetRaceIdsForVenue:
 
     def test_handles_empty_input(self):
         """空リスト入力時は空リストを返す"""
-        from keiba.cli import _get_race_ids_for_venue
+        from keiba.cli.commands.predict import _get_race_ids_for_venue
 
         result = _get_race_ids_for_venue([], "06")
 
@@ -118,7 +118,7 @@ class TestGetRaceIdsForVenue:
 
     def test_extracts_race_id_from_url(self):
         """URLからレースIDを正しく抽出する"""
-        from keiba.cli import _get_race_ids_for_venue
+        from keiba.cli.commands.predict import _get_race_ids_for_venue
 
         race_urls = [
             "https://db.netkeiba.com/race/202606010812/",  # trailing slash
@@ -134,7 +134,7 @@ class TestSavePredictionsMarkdown:
 
     def test_creates_markdown_file(self, tmp_path):
         """Markdownファイルが作成される"""
-        from keiba.cli import _save_predictions_markdown
+        from keiba.cli.formatters.markdown import save_predictions_markdown
 
         predictions_data = [
             {
@@ -155,7 +155,7 @@ class TestSavePredictionsMarkdown:
         output_dir = tmp_path / "predictions"
         output_dir.mkdir(parents=True)
 
-        filepath = _save_predictions_markdown(
+        filepath = save_predictions_markdown(
             predictions_data,
             date_str="2026-01-24",
             venue="中山",
@@ -168,7 +168,7 @@ class TestSavePredictionsMarkdown:
 
     def test_markdown_contains_race_info(self, tmp_path):
         """Markdownファイルにレース情報が含まれる"""
-        from keiba.cli import _save_predictions_markdown
+        from keiba.cli.formatters.markdown import save_predictions_markdown
 
         predictions_data = [
             {
@@ -191,7 +191,7 @@ class TestSavePredictionsMarkdown:
         output_dir = tmp_path / "predictions"
         output_dir.mkdir(parents=True)
 
-        filepath = _save_predictions_markdown(
+        filepath = save_predictions_markdown(
             predictions_data,
             date_str="2026-01-24",
             venue="中山",
@@ -291,10 +291,10 @@ class TestPredictDayCommand:
 class TestPredictDayExecution:
     """predict-dayコマンドの実行テスト"""
 
-    @patch("keiba.scrapers.shutuba.ShutubaScraper")
-    @patch("keiba.cli.RaceListScraper")
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.predict.ShutubaScraper")
+    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.get_session")
+    @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_day_fetches_race_list(
         self,
         mock_get_engine,
@@ -332,11 +332,11 @@ class TestPredictDayExecution:
         # RaceListScraperが呼ばれたことを確認
         mock_scraper.fetch_race_urls.assert_called_once_with(2026, 1, 24, jra_only=True)
 
-    @patch("keiba.services.prediction_service.PredictionService")
-    @patch("keiba.scrapers.shutuba.ShutubaScraper")
-    @patch("keiba.cli.RaceListScraper")
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.predict.PredictionService")
+    @patch("keiba.cli.commands.predict.ShutubaScraper")
+    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.get_session")
+    @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_day_filters_by_venue(
         self,
         mock_get_engine,
@@ -400,12 +400,12 @@ class TestPredictDayExecution:
         # 中山（06）のレースのみ処理されることを確認（2レース）
         assert mock_shutuba.fetch_shutuba.call_count == 2
 
-    @patch("keiba.cli._save_predictions_markdown")
-    @patch("keiba.services.prediction_service.PredictionService")
-    @patch("keiba.scrapers.shutuba.ShutubaScraper")
-    @patch("keiba.cli.RaceListScraper")
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.predict.save_predictions_markdown")
+    @patch("keiba.cli.commands.predict.PredictionService")
+    @patch("keiba.cli.commands.predict.ShutubaScraper")
+    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.get_session")
+    @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_day_saves_markdown(
         self,
         mock_get_engine,
@@ -467,12 +467,12 @@ class TestPredictDayExecution:
         assert call_args.kwargs["date_str"] == "2026-01-24"
         assert call_args.kwargs["venue"] == "中山"
 
-    @patch("keiba.cli._save_predictions_markdown")
-    @patch("keiba.services.prediction_service.PredictionService")
-    @patch("keiba.scrapers.shutuba.ShutubaScraper")
-    @patch("keiba.cli.RaceListScraper")
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.predict.save_predictions_markdown")
+    @patch("keiba.cli.commands.predict.PredictionService")
+    @patch("keiba.cli.commands.predict.ShutubaScraper")
+    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.get_session")
+    @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_day_shows_summary(
         self,
         mock_get_engine,
@@ -542,12 +542,12 @@ class TestPredictDayExecution:
 class TestPredictDayNoMl:
     """predict-day --no-mlオプションのテスト"""
 
-    @patch("keiba.cli._save_predictions_markdown")
-    @patch("keiba.services.prediction_service.PredictionService")
-    @patch("keiba.scrapers.shutuba.ShutubaScraper")
-    @patch("keiba.cli.RaceListScraper")
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.predict.save_predictions_markdown")
+    @patch("keiba.cli.commands.predict.PredictionService")
+    @patch("keiba.cli.commands.predict.ShutubaScraper")
+    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.get_session")
+    @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_day_with_no_ml_skips_ml_prediction(
         self,
         mock_get_engine,
@@ -612,13 +612,13 @@ class TestPredictDayNoMl:
 class TestPredictDayModelAutoDetection:
     """predict-dayコマンドのモデル自動検出テスト"""
 
-    @patch("keiba.cli.find_latest_model")
-    @patch("keiba.cli._save_predictions_markdown")
-    @patch("keiba.services.prediction_service.PredictionService")
-    @patch("keiba.scrapers.shutuba.ShutubaScraper")
-    @patch("keiba.cli.RaceListScraper")
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.predict.find_latest_model")
+    @patch("keiba.cli.commands.predict.save_predictions_markdown")
+    @patch("keiba.cli.commands.predict.PredictionService")
+    @patch("keiba.cli.commands.predict.ShutubaScraper")
+    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.get_session")
+    @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_day_uses_model_if_exists(
         self,
         mock_get_engine,
@@ -682,13 +682,13 @@ class TestPredictDayModelAutoDetection:
         call_kwargs = mock_prediction_service.call_args.kwargs
         assert call_kwargs.get("model_path") == "/path/to/data/models/model.joblib"
 
-    @patch("keiba.cli.find_latest_model")
-    @patch("keiba.cli._save_predictions_markdown")
-    @patch("keiba.services.prediction_service.PredictionService")
-    @patch("keiba.scrapers.shutuba.ShutubaScraper")
-    @patch("keiba.cli.RaceListScraper")
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.predict.find_latest_model")
+    @patch("keiba.cli.commands.predict.save_predictions_markdown")
+    @patch("keiba.cli.commands.predict.PredictionService")
+    @patch("keiba.cli.commands.predict.ShutubaScraper")
+    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.get_session")
+    @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_day_works_without_model(
         self,
         mock_get_engine,
@@ -758,11 +758,11 @@ class TestPredictDayModelAutoDetection:
 class TestPredictCommandModelAutoDetection:
     """predictコマンドのモデル自動検出テスト"""
 
-    @patch("keiba.cli.find_latest_model")
-    @patch("keiba.services.prediction_service.PredictionService")
-    @patch("keiba.scrapers.shutuba.ShutubaScraper")
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.predict.find_latest_model")
+    @patch("keiba.cli.commands.predict.PredictionService")
+    @patch("keiba.cli.commands.predict.ShutubaScraper")
+    @patch("keiba.cli.commands.predict.get_session")
+    @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_uses_model_if_exists(
         self,
         mock_get_engine,
@@ -817,11 +817,11 @@ class TestPredictCommandModelAutoDetection:
         call_kwargs = mock_prediction_service.call_args.kwargs
         assert call_kwargs.get("model_path") == "/path/to/data/models/model.joblib"
 
-    @patch("keiba.cli.find_latest_model")
-    @patch("keiba.services.prediction_service.PredictionService")
-    @patch("keiba.scrapers.shutuba.ShutubaScraper")
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.predict.find_latest_model")
+    @patch("keiba.cli.commands.predict.PredictionService")
+    @patch("keiba.cli.commands.predict.ShutubaScraper")
+    @patch("keiba.cli.commands.predict.get_session")
+    @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_works_without_model(
         self,
         mock_get_engine,
@@ -878,11 +878,11 @@ class TestPredictCommandModelAutoDetection:
         call_kwargs = mock_prediction_service.call_args.kwargs
         assert call_kwargs.get("model_path") is None
 
-    @patch("keiba.cli.find_latest_model")
-    @patch("keiba.services.prediction_service.PredictionService")
-    @patch("keiba.scrapers.shutuba.ShutubaScraper")
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.predict.find_latest_model")
+    @patch("keiba.cli.commands.predict.PredictionService")
+    @patch("keiba.cli.commands.predict.ShutubaScraper")
+    @patch("keiba.cli.commands.predict.get_session")
+    @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_no_ml_flag_skips_model(
         self,
         mock_get_engine,

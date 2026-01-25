@@ -34,7 +34,7 @@ class TestMainGroup:
         runner = CliRunner()
         result = runner.invoke(main, ["--help"])
         assert result.exit_code == 0
-        assert "競馬データ収集CLI" in result.output
+        assert "競馬データ収集・分析CLI" in result.output
 
     def test_scrape_command_registered(self):
         """scrapeコマンドが登録されている"""
@@ -94,11 +94,11 @@ class TestScrapeCommand:
 class TestScrapeCommandExecution:
     """scrapeコマンドの実行テスト"""
 
-    @patch("keiba.cli.RaceDetailScraper")
-    @patch("keiba.cli.RaceListScraper")
-    @patch("keiba.cli.init_db")
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.scrape.RaceDetailScraper")
+    @patch("keiba.cli.commands.scrape.RaceListScraper")
+    @patch("keiba.cli.commands.scrape.init_db")
+    @patch("keiba.cli.commands.scrape.get_session")
+    @patch("keiba.cli.commands.scrape.get_engine")
     def test_scrape_initializes_db(
         self,
         mock_get_engine,
@@ -128,11 +128,11 @@ class TestScrapeCommandExecution:
         mock_get_engine.assert_called_once_with("test.db")
         mock_init_db.assert_called_once_with(mock_engine)
 
-    @patch("keiba.cli.RaceDetailScraper")
-    @patch("keiba.cli.RaceListScraper")
-    @patch("keiba.cli.init_db")
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.scrape.RaceDetailScraper")
+    @patch("keiba.cli.commands.scrape.RaceListScraper")
+    @patch("keiba.cli.commands.scrape.init_db")
+    @patch("keiba.cli.commands.scrape.get_session")
+    @patch("keiba.cli.commands.scrape.get_engine")
     def test_scrape_fetches_race_list_for_each_day(
         self,
         mock_get_engine,
@@ -161,11 +161,11 @@ class TestScrapeCommandExecution:
         # 2024年1月は31日ある
         assert mock_scraper.fetch_race_urls.call_count == 31
 
-    @patch("keiba.cli.RaceDetailScraper")
-    @patch("keiba.cli.RaceListScraper")
-    @patch("keiba.cli.init_db")
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.scrape.RaceDetailScraper")
+    @patch("keiba.cli.commands.scrape.RaceListScraper")
+    @patch("keiba.cli.commands.scrape.init_db")
+    @patch("keiba.cli.commands.scrape.get_session")
+    @patch("keiba.cli.commands.scrape.get_engine")
     def test_scrape_fetches_race_details(
         self,
         mock_get_engine,
@@ -220,11 +220,11 @@ class TestScrapeCommandExecution:
 class TestScrapeDataSaving:
     """scrapeコマンドのデータ保存テスト"""
 
-    @patch("keiba.cli.RaceDetailScraper")
-    @patch("keiba.cli.RaceListScraper")
-    @patch("keiba.cli.init_db")
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.scrape.RaceDetailScraper")
+    @patch("keiba.cli.commands.scrape.RaceListScraper")
+    @patch("keiba.cli.commands.scrape.init_db")
+    @patch("keiba.cli.commands.scrape.get_session")
+    @patch("keiba.cli.commands.scrape.get_engine")
     def test_scrape_saves_race(
         self,
         mock_get_engine,
@@ -296,11 +296,11 @@ class TestScrapeDataSaving:
         # session.addが呼ばれたことを確認
         assert mock_session.add.called or mock_session.merge.called
 
-    @patch("keiba.cli.RaceDetailScraper")
-    @patch("keiba.cli.RaceListScraper")
-    @patch("keiba.cli.init_db")
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.scrape.RaceDetailScraper")
+    @patch("keiba.cli.commands.scrape.RaceListScraper")
+    @patch("keiba.cli.commands.scrape.init_db")
+    @patch("keiba.cli.commands.scrape.get_session")
+    @patch("keiba.cli.commands.scrape.get_engine")
     def test_scrape_skips_existing_race(
         self,
         mock_get_engine,
@@ -343,11 +343,11 @@ class TestScrapeDataSaving:
 class TestScrapeProgressOutput:
     """scrapeコマンドの進捗表示テスト"""
 
-    @patch("keiba.cli.RaceDetailScraper")
-    @patch("keiba.cli.RaceListScraper")
-    @patch("keiba.cli.init_db")
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.scrape.RaceDetailScraper")
+    @patch("keiba.cli.commands.scrape.RaceListScraper")
+    @patch("keiba.cli.commands.scrape.init_db")
+    @patch("keiba.cli.commands.scrape.get_session")
+    @patch("keiba.cli.commands.scrape.get_engine")
     def test_scrape_shows_start_message(
         self,
         mock_get_engine,
@@ -375,11 +375,11 @@ class TestScrapeProgressOutput:
 
         assert "2024年1月" in result.output
 
-    @patch("keiba.cli.RaceDetailScraper")
-    @patch("keiba.cli.RaceListScraper")
-    @patch("keiba.cli.init_db")
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.scrape.RaceDetailScraper")
+    @patch("keiba.cli.commands.scrape.RaceListScraper")
+    @patch("keiba.cli.commands.scrape.init_db")
+    @patch("keiba.cli.commands.scrape.get_session")
+    @patch("keiba.cli.commands.scrape.get_engine")
     def test_scrape_shows_completion_message(
         self,
         mock_get_engine,
@@ -407,11 +407,11 @@ class TestScrapeProgressOutput:
 
         assert "完了" in result.output
 
-    @patch("keiba.cli.RaceDetailScraper")
-    @patch("keiba.cli.RaceListScraper")
-    @patch("keiba.cli.init_db")
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.scrape.RaceDetailScraper")
+    @patch("keiba.cli.commands.scrape.RaceListScraper")
+    @patch("keiba.cli.commands.scrape.init_db")
+    @patch("keiba.cli.commands.scrape.get_session")
+    @patch("keiba.cli.commands.scrape.get_engine")
     def test_scrape_exits_successfully(
         self,
         mock_get_engine,
@@ -445,7 +445,7 @@ class TestHelperFunctions:
 
     def test_extract_race_id_from_url(self):
         """URLからレースIDを抽出できる"""
-        from keiba.cli import extract_race_id_from_url
+        from keiba.cli.commands.scrape import extract_race_id_from_url
 
         url = "https://race.netkeiba.com/race/202401010101.html"
         race_id = extract_race_id_from_url(url)
@@ -453,7 +453,7 @@ class TestHelperFunctions:
 
     def test_extract_race_id_from_url_with_different_format(self):
         """異なる形式のURLからもレースIDを抽出できる"""
-        from keiba.cli import extract_race_id_from_url
+        from keiba.cli.commands.scrape import extract_race_id_from_url
 
         url = "https://race.netkeiba.com/race/202412251211.html"
         race_id = extract_race_id_from_url(url)
@@ -461,7 +461,7 @@ class TestHelperFunctions:
 
     def test_parse_race_date(self):
         """レース日付を解析できる"""
-        from keiba.cli import parse_race_date
+        from keiba.cli.commands.scrape import parse_race_date
 
         date_str = "2024年1月1日"
         result = parse_race_date(date_str)
@@ -469,7 +469,7 @@ class TestHelperFunctions:
 
     def test_parse_race_date_with_month_padding(self):
         """月がパディングされた日付を解析できる"""
-        from keiba.cli import parse_race_date
+        from keiba.cli.commands.scrape import parse_race_date
 
         date_str = "2024年12月25日"
         result = parse_race_date(date_str)
@@ -519,8 +519,8 @@ class TestAnalyzeCommand:
 class TestAnalyzeCommandExecution:
     """analyzeコマンドの実行テスト"""
 
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.analyze.get_session")
+    @patch("keiba.cli.commands.analyze.get_engine")
     def test_analyze_with_no_races(
         self,
         mock_get_engine,
@@ -553,8 +553,8 @@ class TestAnalyzeCommandExecution:
         assert result.exit_code == 0
         assert "レースが見つかりません" in result.output or "No races" in result.output
 
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.analyze.get_session")
+    @patch("keiba.cli.commands.analyze.get_engine")
     def test_analyze_outputs_table_format(
         self,
         mock_get_engine,
@@ -642,8 +642,8 @@ class TestMigrateGradesCommand:
 class TestMigrateGradesCommandExecution:
     """migrate-gradesコマンドの実行テスト"""
 
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.migrate.get_session")
+    @patch("keiba.cli.commands.migrate.get_engine")
     def test_migrate_grades_updates_races(
         self,
         mock_get_engine,
@@ -673,8 +673,8 @@ class TestMigrateGradesCommandExecution:
         # gradeが更新されたことを確認
         assert mock_race.grade == "G1"
 
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.migrate.get_session")
+    @patch("keiba.cli.commands.migrate.get_engine")
     def test_migrate_grades_shows_progress(
         self,
         mock_get_engine,
@@ -703,11 +703,11 @@ class TestMigrateGradesCommandExecution:
 class TestScrapeDataSavingWithGrade:
     """scrapeコマンドのグレード保存テスト"""
 
-    @patch("keiba.cli.RaceDetailScraper")
-    @patch("keiba.cli.RaceListScraper")
-    @patch("keiba.cli.init_db")
-    @patch("keiba.cli.get_session")
-    @patch("keiba.cli.get_engine")
+    @patch("keiba.cli.commands.scrape.RaceDetailScraper")
+    @patch("keiba.cli.commands.scrape.RaceListScraper")
+    @patch("keiba.cli.commands.scrape.init_db")
+    @patch("keiba.cli.commands.scrape.get_session")
+    @patch("keiba.cli.commands.scrape.get_engine")
     def test_scrape_saves_race_with_grade(
         self,
         mock_get_engine,
@@ -1158,7 +1158,7 @@ class TestExtractRaceIdFromShutubaUrl:
 
     def test_extract_race_id_from_shutuba_url(self):
         """出馬表URLからrace_idを正しく抽出できる"""
-        from keiba.cli import extract_race_id_from_shutuba_url
+        from keiba.cli.utils.url_parser import extract_race_id_from_shutuba_url
 
         url = "https://race.netkeiba.com/race/shutuba.html?race_id=202606010802"
         race_id = extract_race_id_from_shutuba_url(url)
@@ -1166,7 +1166,7 @@ class TestExtractRaceIdFromShutubaUrl:
 
     def test_extract_race_id_with_additional_params(self):
         """追加パラメータがあるURLからもrace_idを抽出できる"""
-        from keiba.cli import extract_race_id_from_shutuba_url
+        from keiba.cli.utils.url_parser import extract_race_id_from_shutuba_url
 
         url = "https://race.netkeiba.com/race/shutuba.html?race_id=202606010802&rf=shutuba_submenu"
         race_id = extract_race_id_from_shutuba_url(url)
@@ -1174,7 +1174,7 @@ class TestExtractRaceIdFromShutubaUrl:
 
     def test_extract_race_id_invalid_url_raises_error(self):
         """不正なURLはValueErrorを発生させる"""
-        from keiba.cli import extract_race_id_from_shutuba_url
+        from keiba.cli.utils.url_parser import extract_race_id_from_shutuba_url
 
         with pytest.raises(ValueError):
             extract_race_id_from_shutuba_url("https://example.com/invalid")
@@ -1247,7 +1247,7 @@ class TestPredictCommandExecution:
 
     def test_predict_shows_race_info_header(self):
         """predictコマンドはレース情報ヘッダーを表示する（extract_race_id_from_shutuba_urlのテスト）"""
-        from keiba.cli import extract_race_id_from_shutuba_url
+        from keiba.cli.utils.url_parser import extract_race_id_from_shutuba_url
 
         url = "https://race.netkeiba.com/race/shutuba.html?race_id=202606010802"
         race_id = extract_race_id_from_shutuba_url(url)
