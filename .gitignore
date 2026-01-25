@@ -30,6 +30,10 @@ data/models/
 .DS_Store
 Thumbs.db
 
+# Claude Code (local only)
+.claude/plans/
+.claude/settings.local.json
+
 # Worktrees
 .worktrees/
 
