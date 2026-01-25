@@ -130,6 +130,7 @@ class TestPredictFromShutuba:
         assert hasattr(result, "ml_probability")
         assert hasattr(result, "factor_scores")
         assert hasattr(result, "total_score")
+        assert hasattr(result, "combined_score")
         assert hasattr(result, "rank")
 
         # 値の確認
@@ -301,6 +302,108 @@ class TestPredictFromShutuba:
             f"before_date should be race date '2025-01-01', got '{before_date}'"
         )
 
+    def test_predictions_sorted_by_combined_score(self):
+        """combined_score降順でソートされること"""
+        # Arrange
+        entries = (
+            create_test_entry("horse_001", "Horse A", 1),
+            create_test_entry("horse_002", "Horse B", 2),
+            create_test_entry("horse_003", "Horse C", 3),
+        )
+        shutuba = create_test_shutuba(entries)
+
+        mock_repo = Mock(spec=RaceResultRepository)
+
+        # 各馬に異なる過去成績を設定
+        def get_past_results_side_effect(horse_id, before_date, limit=20):
+            if horse_id == "horse_001":
+                # ML確率低め、total_score高め -> combined中程度
+                return [create_mock_past_result("horse_001", 2)]
+            elif horse_id == "horse_002":
+                # ML確率高め、total_score中程度 -> combined高め
+                return [create_mock_past_result("horse_002", 1)]
+            else:
+                # ML確率中程度、total_score低め -> combined低め
+                return [create_mock_past_result("horse_003", 5)]
+
+        mock_repo.get_past_results.side_effect = get_past_results_side_effect
+
+        service = PredictionService(repository=mock_repo)
+
+        # Act
+        results = service.predict_from_shutuba(shutuba)
+
+        # Assert
+        # combined_scoreフィールドが存在すること
+        for result in results:
+            assert hasattr(result, 'combined_score'), (
+                f"Result should have 'combined_score' field"
+            )
+
+        # combined_scoreがNoneでない結果は降順でソートされていること
+        combined_scores = [r.combined_score for r in results if r.combined_score is not None]
+        assert combined_scores == sorted(combined_scores, reverse=True), (
+            "Results should be sorted by combined_score in descending order"
+        )
+
+
+class TestCombinedScoreCalculation:
+    """複合スコア計算のテスト"""
+
+    def test_combined_score_geometric_mean(self):
+        """幾何平均で計算されること"""
+        # normalized_ml=100 (2% / 2% * 100), total_score=80 -> sqrt(100*80)=89.4
+        mock_repo = Mock(spec=RaceResultRepository)
+        mock_repo.get_past_results.return_value = []
+        service = PredictionService(repository=mock_repo)
+
+        score = service._calculate_combined_score(
+            ml_probability=0.02,
+            max_ml_probability=0.02,
+            total_score=80.0
+        )
+        assert score == pytest.approx(89.4, rel=0.1)
+
+    def test_combined_score_partial_ml(self):
+        """ML確率が最大より低い場合の計算"""
+        # normalized_ml=50 (1% / 2% * 100), total_score=80 -> sqrt(50*80)=63.2
+        mock_repo = Mock(spec=RaceResultRepository)
+        mock_repo.get_past_results.return_value = []
+        service = PredictionService(repository=mock_repo)
+
+        score = service._calculate_combined_score(
+            ml_probability=0.01,
+            max_ml_probability=0.02,
+            total_score=80.0
+        )
+        assert score == pytest.approx(63.2, rel=0.1)
+
+    def test_combined_score_none_when_no_total_score(self):
+        """total_scoreがNoneの場合はNone"""
+        mock_repo = Mock(spec=RaceResultRepository)
+        mock_repo.get_past_results.return_value = []
+        service = PredictionService(repository=mock_repo)
+
+        score = service._calculate_combined_score(
+            ml_probability=0.02,
+            max_ml_probability=0.02,
+            total_score=None
+        )
+        assert score is None
+
+    def test_combined_score_none_when_max_ml_is_zero(self):
+        """max_ml_probabilityが0の場合はNone"""
+        mock_repo = Mock(spec=RaceResultRepository)
+        mock_repo.get_past_results.return_value = []
+        service = PredictionService(repository=mock_repo)
+
+        score = service._calculate_combined_score(
+            ml_probability=0.0,
+            max_ml_probability=0.0,
+            total_score=80.0
+        )
+        assert score is None
+
 
 class TestPredictionResultDataclass:
     """PredictionResultデータクラスのテスト"""
@@ -314,9 +417,38 @@ class TestPredictionResultDataclass:
             ml_probability=0.5,
             factor_scores={"past_results": 80.0},
             total_score=80.0,
+            combined_score=80.0,
             rank=1,
         )
 
         # frozen=Trueなので変更しようとすると例外
         with pytest.raises(Exception):  # FrozenInstanceError
             result.horse_number = 2
+
+    def test_prediction_result_has_combined_score_field(self):
+        """PredictionResultにcombined_scoreフィールドが存在すること"""
+        result = PredictionResult(
+            horse_number=1,
+            horse_name="Horse A",
+            horse_id="horse_001",
+            ml_probability=0.5,
+            factor_scores={"past_results": 80.0},
+            total_score=80.0,
+            combined_score=63.2,
+            rank=1,
+        )
+        assert result.combined_score == 63.2
+
+    def test_combined_score_can_be_none(self):
+        """新馬戦対応: combined_scoreがNoneを許容"""
+        result = PredictionResult(
+            horse_number=1,
+            horse_name="Horse A",
+            horse_id="horse_001",
+            ml_probability=0.0,
+            factor_scores={},
+            total_score=None,
+            combined_score=None,
+            rank=1,
+        )
+        assert result.combined_score is None

@@ -1,111 +1,182 @@
 # Codemap Diff Report
-Generated: 2026-01-24
+Generated: 2026-01-25
 
 ## Summary
 
-Overall Change Percentage: ~15%
+Overall Change Percentage: ~20%
 Status: AUTO-APPROVED (under 30% threshold)
 
 ## Changes by File
 
 ### docs/CODEMAPS/architecture.md
 
-Added Sections:
-1. Test Structure (35 lines)
-   - Complete test directory tree
-   - All test files including new cli/, scrapers/ test directories
-   - New files: test_predict_day.py, test_review_day.py, test_predict_review.py, test_race_detail_payouts.py
+Updated Sections:
+1. Module Dependencies (10 lines modified)
+   - Added joblib dependency to ml/trainer.py
+   - Added services/prediction_service.py dependencies detail
+   - Added models/entry.py to fukusho_simulator.py dependencies
 
-2. CLI Helper Functions table (7 lines)
-   - _get_race_ids_for_venue()
-   - _save_predictions_markdown()
-   - _parse_predictions_markdown()
-   - _calculate_fukusho_simulation()
-   - _append_review_to_markdown()
+2. Data Flow - Real-time Prediction Pipeline (3 lines modified)
+   - Added "_calculate_combined_score() (幾何平均)" to PredictionService flow
+   - Updated output description to include combined_score
 
-3. Constants table (3 lines)
-   - VENUE_CODE_MAP
+3. Data Flow - NEW: Train Pipeline (12 lines added)
+   - Added complete train command data flow diagram
 
-Updated:
-- Freshness timestamp updated
+4. External Dependencies (2 lines added)
+   - Added joblib and numpy to dependency table
 
-Lines Added: ~60
-Lines Modified: 1
-Change Percentage: ~33% increase
+5. CLI Helper Functions (2 lines added)
+   - Added _build_training_data()
+   - Added _calculate_past_stats()
 
-### docs/CODEMAPS/data.md
+6. NEW: Model Configuration section (15 lines added)
+   - Trainer Parameters table (Normal vs Lightweight mode)
+   - Model Storage details (format, path, naming)
 
-Added Sections:
-1. Fukusho Simulation Data Structures (55 lines)
-   - _calculate_fukusho_simulation Input/Output schema
-   - predictions dict structure
-   - actual_results dict structure
-   - payouts dict structure
-   - simulation result schema
-
-2. CLI Internal Data Structures (20 lines)
-   - VENUE_CODE_MAP constant
-   - race_id Format documentation
-
-Updated:
-- Freshness timestamp updated
-
-Lines Added: ~75
-Lines Modified: 1
-Change Percentage: ~22% increase
+Lines Added: ~30
+Lines Modified: ~15
+Change Percentage: ~12%
 
 ### docs/CODEMAPS/backend.md
 
-Status: NOT CREATED
-Note: backend.md was not in the original scope. The existing architecture.md
-      covers backend functionality adequately.
+Status: NEW FILE CREATED
 
-## New Test Files Referenced
+Content:
+1. Overview (~10 lines)
+2. CLI structure and commands (~100 lines)
+   - Entry point documentation
+   - Command list
+   - SQLAlchemyRaceResultRepository class
+   - Helper functions table with line numbers
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| tests/cli/test_predict_day.py | 610 | predict-day command tests |
-| tests/cli/test_review_day.py | 677 | review-day command tests |
-| tests/cli/test_predict_review.py | 850 | Integration tests |
-| tests/scrapers/test_race_detail_payouts.py | 277 | fetch_payouts tests |
+3. Services documentation (~80 lines)
+   - PredictionService structure
+   - Combined Score calculation formula
+   - RaceResultRepository protocol
 
-Total New Test Lines: ~2,414
+4. Scrapers documentation (~60 lines)
+   - Directory structure
+   - Class documentation for all 4 scrapers
+   - Method signatures
+
+5. Database Layer (~20 lines)
+   - db.py functions
+
+6. ML Layer (~50 lines)
+   - Trainer class with mode params
+   - Model utils function
+
+7. Backtest Layer (~40 lines)
+   - FukushoSimulator
+   - BacktestEngine
+
+8. Configuration (~30 lines)
+   - weights.py
+   - pedigree_master.py reference
+
+9. Request/Response Flow (~30 lines)
+   - predict command flow
+   - train command flow
+
+10. Error Handling (~15 lines)
+
+Total Lines: ~435
+Change Percentage: N/A (new file)
+
+### docs/CODEMAPS/data.md
+
+Updated Sections:
+1. Freshness timestamp updated
+   - Previous: 2026-01-24 (FukushoSimulator data structures)
+   - Current: 2026-01-25 (PredictionResult.combined_score, model storage)
+
+2. ER Diagram (format improved)
+   - Changed from Unicode box to ASCII box drawing
+   - Added clarity to table relationships
+
+3. NEW: Service Layer Data Structures (~35 lines added)
+   - PredictionResult with combined_score field
+   - Combined Score Formula documentation
+
+4. Entry DTOs section (~35 lines added)
+   - RaceEntry dataclass
+   - ShutubaData dataclass
+
+5. NEW: Model Storage section (~30 lines added)
+   - File format documentation
+   - Model loading code
+   - Model saving code
+
+6. FukushoSimulator description updated
+   - Added "PredictionServiceを使用して7因子スコアとML予測を組み合わせて予測"
+
+Lines Added: ~100
+Lines Modified: ~10
+Change Percentage: ~18%
 
 ## Source Code Changes Referenced
 
-### keiba/cli.py
-New additions:
-- VENUE_CODE_MAP constant (12 lines)
-- predict_day command (~145 lines)
-- review_day command (~120 lines)
-- _get_race_ids_for_venue() (~22 lines)
-- _save_predictions_markdown() (~95 lines)
-- _parse_predictions_markdown() (~120 lines)
-- _calculate_fukusho_simulation() (~80 lines)
-- _append_review_to_markdown() (~65 lines)
+### keiba/services/prediction_service.py
+Key changes reflected in codemap:
+- PredictionResult.combined_score field (line 30)
+- _calculate_combined_score() method (lines 333-354)
+- Sorting by combined_score (lines 171-175)
 
-### keiba/scrapers/race_detail.py
-New additions:
-- fetch_payouts() (~20 lines)
-- _parse_fukusho_payouts() (~40 lines)
-- _parse_br_separated_values() (~20 lines)
+### keiba/ml/trainer.py
+Key changes reflected in codemap:
+- save_model() method (lines 165-189)
+- Mode parameters (_NORMAL_PARAMS, _LIGHTWEIGHT_PARAMS)
+
+### keiba/ml/model_utils.py
+New file documented:
+- find_latest_model() function (lines 6-27)
+
+### keiba/cli.py
+Key changes reflected in codemap:
+- train command (lines 2182-2250)
+- _print_prediction_table combined_score display (lines 1266-1328)
+
+### keiba/backtest/fukusho_simulator.py
+Changes reflected in codemap:
+- PredictionService integration (lines 229-231)
+- _BacktestRaceResultRepository class (lines 19-89)
 
 ## Verification
 
 All referenced files exist:
-[x] tests/cli/test_predict_day.py
-[x] tests/cli/test_review_day.py
-[x] tests/cli/test_predict_review.py
-[x] tests/scrapers/test_race_detail_payouts.py
-[x] keiba/cli.py (VENUE_CODE_MAP, predict_day, review_day, helpers)
-[x] keiba/scrapers/race_detail.py (fetch_payouts, _parse_fukusho_payouts)
+[x] keiba/services/prediction_service.py (combined_score)
+[x] keiba/ml/trainer.py (save_model, mode params)
+[x] keiba/ml/model_utils.py (find_latest_model)
+[x] keiba/cli.py (train command, _print_prediction_table)
+[x] keiba/backtest/fukusho_simulator.py (PredictionService integration)
+[x] keiba/models/entry.py (RaceEntry, ShutubaData)
+[x] keiba/db.py (get_engine, get_session, init_db)
+[x] keiba/constants.py (JRA_COURSE_CODES)
+
+## New Test Files Since Last Update
+
+| File | Purpose |
+|------|---------|
+| tests/cli/test_train_command.py | train command tests |
+| tests/ml/test_model_utils.py | model_utils tests |
 
 ## Freshness Timestamps
 
 | File | Previous | Current |
 |------|----------|---------|
-| architecture.md | 2026-01-24 | 2026-01-24 |
-| data.md | 2026-01-24 | 2026-01-24 |
+| architecture.md | 2026-01-25 | 2026-01-25 (updated) |
+| backend.md | N/A | 2026-01-25 (created) |
+| data.md | 2026-01-24 | 2026-01-25 (updated) |
+
+## Quality Checklist
+
+- [x] Codemaps generated from actual code
+- [x] All file paths verified to exist
+- [x] Code examples match source
+- [x] Freshness timestamps updated
+- [x] No obsolete references
+- [x] Consistent markdown formatting
 
 ---
 End of Report

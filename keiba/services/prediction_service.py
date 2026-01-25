@@ -1,5 +1,6 @@
 """PredictionService - 出馬表データから予測を実行するサービス"""
 
+import math
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -26,6 +27,7 @@ class PredictionResult:
     ml_probability: float
     factor_scores: dict[str, float | None]
     total_score: float | None
+    combined_score: float | None
     rank: int
 
 
@@ -153,6 +155,25 @@ class PredictionService:
             reverse=True,
         )
 
+        # レース内の最大ML確率を取得
+        max_ml_probability = max(
+            (p["ml_probability"] for p in predictions), default=0.0
+        )
+
+        # 各予測の複合スコアを計算
+        for pred in predictions:
+            pred["combined_score"] = self._calculate_combined_score(
+                ml_probability=pred["ml_probability"],
+                max_ml_probability=max_ml_probability,
+                total_score=pred["total_score"],
+            )
+
+        # 複合スコア降順で再ソート
+        predictions.sort(
+            key=lambda x: (x["combined_score"] or 0.0, x["ml_probability"]),
+            reverse=True,
+        )
+
         # ランキングを付与してPredictionResultに変換
         results = []
         for rank, pred in enumerate(predictions, 1):
@@ -164,6 +185,7 @@ class PredictionService:
                     ml_probability=pred["ml_probability"],
                     factor_scores=pred["factor_scores"],
                     total_score=pred["total_score"],
+                    combined_score=pred["combined_score"],
                     rank=rank,
                 )
             )
@@ -307,6 +329,29 @@ class PredictionService:
             return float(max(0.0, min(1.0, probability)))
         except Exception:
             return 0.0
+
+    def _calculate_combined_score(
+        self,
+        ml_probability: float,
+        max_ml_probability: float,
+        total_score: float | None,
+    ) -> float | None:
+        """複合スコアを幾何平均で計算
+
+        Args:
+            ml_probability: 対象馬のML確率
+            max_ml_probability: レース内の最大ML確率
+            total_score: 7因子の重み付き総合スコア
+
+        Returns:
+            複合スコア（0-100）またはNone
+        """
+        if total_score is None or max_ml_probability <= 0:
+            return None
+
+        normalized_ml = (ml_probability / max_ml_probability) * 100
+        combined = math.sqrt(normalized_ml * total_score)
+        return round(combined, 1)
 
     def _calculate_past_stats(
         self, past_results: list, horse_id: str

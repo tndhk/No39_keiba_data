@@ -2,7 +2,7 @@
 
 競馬データ収集システムの開発ワークフローガイド。
 
-> Freshness: 2026-01-24 (Updated: predict-day/review-day commands)
+> Freshness: 2026-01-25 (Updated: combined_score機能、trainコマンド追加)
 
 ## 環境セットアップ
 
@@ -45,7 +45,8 @@ keiba/
 ├── ml/           # 機械学習予測モジュール
 │   ├── feature_builder.py  # 特徴量構築
 │   ├── trainer.py          # LightGBMモデル学習
-│   └── predictor.py        # 予測実行
+│   ├── predictor.py        # 予測実行
+│   └── model_utils.py      # モデルユーティリティ（最新モデル検索等）
 ├── backtest/     # バックテストモジュール
 │   ├── backtester.py  # BacktestEngine（セッション管理、バッチクエリ）
 │   ├── metrics.py     # メトリクス計算
@@ -166,6 +167,29 @@ keiba predict --url "https://race.netkeiba.com/race/shutuba.html?race_id=2026060
 - 7因子スコア（past_results, course_fit, time_index, last_3f, popularity, pedigree, running_style）
 - ML予測（オプション、学習済みモデルが必要）
 
+### keiba train
+
+MLモデルを学習して保存する。
+
+```bash
+# 基本使用法
+keiba train --db data/keiba.db --output data/models/model.joblib
+
+# カットオフ日付を指定
+keiba train --db data/keiba.db --output data/models/model.joblib --cutoff-date 2026-01-01
+```
+
+| オプション | 必須 | デフォルト | 説明 |
+|-----------|------|-----------|------|
+| --db | Yes | - | DBファイルパス |
+| --output | Yes | - | 出力モデルパス |
+| --cutoff-date | No | 今日 | 学習データのカットオフ日（YYYY-MM-DD） |
+
+学習完了時に以下のメトリクスが表示される:
+- Precision@1: 予測1位の正解率
+- Precision@3: 予測上位3位の正解率
+- AUC-ROC: ROC曲線下面積
+
 ### keiba predict-day
 
 指定日・競馬場の全レースを予測し、Markdownファイルに保存。
@@ -285,6 +309,22 @@ N+1問題を解消するためのバッチ取得メソッド:
 | popularity | オッズ・人気順ベースのスコア | 14.3% |
 | pedigree | 血統分析（父・母父系統の距離・馬場適性） | 14.3% |
 | running_style | 脚質分析（脚質傾向とコース有利脚質のマッチ度） | 14.2% |
+
+### 複合スコア（combined_score）
+
+ML予測確率と7因子総合スコアを統合した複合指標。幾何平均で計算される。
+
+計算式:
+```
+normalized_ml = (対象馬のML確率 / レース内最大ML確率) x 100
+combined_score = sqrt(normalized_ml x total_score)
+```
+
+特徴:
+- ML予測と因子分析の両方を考慮したバランスの取れた指標
+- 0-100のスケールで出力
+- 予測結果はcombined_score降順でソートされる
+- CLI表示では「複合」列に表示
 
 ### 血統分析（PedigreeFactor）
 

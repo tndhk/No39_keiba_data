@@ -13,6 +13,7 @@ import click
 from sqlalchemy import or_
 
 from keiba.db import get_engine, get_session, init_db
+from keiba.ml.model_utils import find_latest_model
 from keiba.models import Horse, Jockey, Race, RaceResult, Trainer
 from keiba.scrapers import HorseDetailScraper, RaceDetailScraper, RaceListScraper
 from keiba.utils.grade_extractor import extract_grade
@@ -1200,6 +1201,8 @@ class SQLAlchemyRaceResultRepository:
 )
 def predict(url: str, db: str, no_ml: bool):
     """出馬表URLから予測を実行"""
+    from pathlib import Path
+
     from keiba.scrapers.shutuba import ShutubaScraper
     from keiba.services.prediction_service import PredictionService
 
@@ -1236,7 +1239,11 @@ def predict(url: str, db: str, no_ml: bool):
         repository = SQLAlchemyRaceResultRepository(session)
 
         # モデルパスの設定（ML予測を使用する場合）
-        model_path = None if no_ml else None  # 現状はモデルパス未指定
+        model_path = None
+        if not no_ml:
+            db_path = Path(db).resolve()
+            model_dir = db_path.parent / "models"
+            model_path = find_latest_model(str(model_dir))
 
         # PredictionServiceで予測を実行
         service = PredictionService(repository=repository, model_path=model_path)
@@ -1256,15 +1263,20 @@ def _print_prediction_table(predictions: list, with_ml: bool) -> None:
     if with_ml:
         # ML予測あり
         click.echo(
-            f"{'順位':^4} | {'馬番':^4} | {'馬名':^12} | {'ML確率':^8} | "
+            f"{'順位':^4} | {'馬番':^4} | {'馬名':^12} | {'ML確率':^8} | {'複合':^6} | "
             f"{'総合':^6} | {'過去':^6} | {'適性':^6} | {'指数':^6} | {'上り':^6} | "
             f"{'人気':^6} | {'血統':^6} | {'脚質':^6}"
         )
-        click.echo("-" * 110)
+        click.echo("-" * 122)
 
         for pred in predictions:
             rank = f"{pred.rank}"
             prob = f"{pred.ml_probability:.1%}" if pred.ml_probability > 0 else "-"
+            combined = (
+                f"{pred.combined_score:.1f}"
+                if pred.combined_score is not None
+                else "-"
+            )
             total = f"{pred.total_score:.1f}" if pred.total_score is not None else "-"
             past = (
                 f"{pred.factor_scores.get('past_results', 0):.1f}"
@@ -1311,7 +1323,7 @@ def _print_prediction_table(predictions: list, with_ml: bool) -> None:
 
             click.echo(
                 f"{rank:^4} | {pred.horse_number:^4} | {horse_name:^12} | "
-                f"{prob:^8} | {total:^6} | {past:^6} | {course:^6} | {time_idx:^6} | "
+                f"{prob:^8} | {combined:^6} | {total:^6} | {past:^6} | {course:^6} | {time_idx:^6} | "
                 f"{last_3f:^6} | {pop:^6} | {pedigree:^6} | {running:^6}"
             )
     else:
@@ -1509,6 +1521,8 @@ def _save_predictions_markdown(
 @click.option("--no-ml", is_flag=True, default=False, help="ML予測をスキップ")
 def predict_day(date_str: str | None, venue: str, db: str, no_ml: bool):
     """指定日・競馬場の全レースを予測"""
+    from pathlib import Path
+
     from keiba.scrapers.shutuba import ShutubaScraper
     from keiba.services.prediction_service import PredictionService
 
@@ -1566,7 +1580,15 @@ def predict_day(date_str: str | None, venue: str, db: str, no_ml: bool):
 
     with get_session(engine) as session:
         repository = SQLAlchemyRaceResultRepository(session)
-        service = PredictionService(repository=repository, model_path=None)
+
+        # モデルパスの設定（ML予測を使用する場合）
+        model_path = None
+        if not no_ml:
+            db_path = Path(db).resolve()
+            model_dir = db_path.parent / "models"
+            model_path = find_latest_model(str(model_dir))
+
+        service = PredictionService(repository=repository, model_path=model_path)
 
         for race_id in sorted(race_ids):
             try:
@@ -2155,3 +2177,74 @@ def backtest_fukusho(
     click.echo(f"  払戻額: {summary.total_payout:,}円")
     click.echo(f"  回収率: {summary.return_rate * 100:.1f}%")
     click.echo("-" * 40)
+
+
+@main.command()
+@click.option("--db", required=True, type=click.Path(exists=True), help="データベースファイルパス")
+@click.option("--output", required=True, type=click.Path(), help="出力モデルパス")
+@click.option("--cutoff-date", default=None, help="学習データのカットオフ日（YYYY-MM-DD）")
+def train(db: str, output: str, cutoff_date: str | None):
+    """MLモデルを学習して保存する"""
+    import numpy as np
+
+    from keiba.ml.feature_builder import FeatureBuilder
+    from keiba.ml.trainer import Trainer as MLTrainer
+
+    click.echo("学習開始")
+    click.echo(f"データベース: {db}")
+    click.echo(f"出力先: {output}")
+
+    # カットオフ日付をパース
+    if cutoff_date is not None:
+        try:
+            target_date = dt.strptime(cutoff_date, "%Y-%m-%d").date()
+        except ValueError:
+            click.echo(f"日付形式が不正です: {cutoff_date}（YYYY-MM-DD形式で指定してください）")
+            raise SystemExit(1)
+    else:
+        # カットオフ日付が指定されていない場合は今日を使用
+        target_date = date.today()
+
+    click.echo(f"カットオフ日付: {target_date}")
+    click.echo("")
+
+    # DBに接続
+    engine = get_engine(db)
+
+    with get_session(engine) as session:
+        # 学習データを構築
+        click.echo("学習データを構築中...")
+        features_list, labels = _build_training_data(session, target_date)
+        training_count = len(features_list)
+
+        if training_count < 100:
+            click.echo(f"学習データ不足（{training_count}サンプル）: 最低100サンプル必要")
+            raise SystemExit(1)
+
+        click.echo(f"学習データ: {training_count}サンプル")
+
+        # 特徴量行列を作成
+        feature_builder = FeatureBuilder()
+        feature_names = feature_builder.get_feature_names()
+        X = np.array([[f[name] for name in feature_names] for f in features_list])
+        y = np.array(labels)
+
+        # モデルを学習
+        click.echo("モデルを学習中...")
+        trainer = MLTrainer()
+        metrics = trainer.train_with_cv(X, y, n_splits=5)
+
+        # メトリクスを表示
+        click.echo("")
+        click.echo("学習完了")
+        if metrics.get("precision_at_1") is not None:
+            click.echo(f"  Precision@1: {metrics['precision_at_1']:.1%}")
+        if metrics.get("precision_at_3") is not None:
+            click.echo(f"  Precision@3: {metrics['precision_at_3']:.1%}")
+        if metrics.get("auc_roc") is not None:
+            click.echo(f"  AUC-ROC: {metrics['auc_roc']:.3f}")
+
+        # モデルを保存
+        trainer.save_model(output)
+        click.echo("")
+        click.echo(f"モデルを保存しました: {output}")

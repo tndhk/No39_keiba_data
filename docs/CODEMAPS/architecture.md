@@ -1,6 +1,6 @@
 # Architecture Codemap
 
-> Freshness: 2026-01-24 (Updated: backtest-fukusho command, FukushoSimulator)
+> Freshness: 2026-01-25 (Updated: train command, combined_score, model_utils)
 
 ## System Overview
 
@@ -18,6 +18,10 @@ keiba/                    # 競馬データ収集・分析CLI
 ├── analyzers/           # レース分析エンジン
 │   └── factors/         # スコア算出因子 (7種)
 ├── ml/                  # ML予測モジュール
+│   ├── feature_builder.py  # 特徴量構築
+│   ├── trainer.py          # LightGBMモデル学習・保存
+│   ├── predictor.py        # 予測実行
+│   └── model_utils.py      # モデルユーティリティ（最新モデル検索）
 ├── backtest/            # バックテストモジュール
 │   ├── __init__.py
 │   ├── backtester.py    # BacktestEngine（ウォークフォワード検証）
@@ -39,10 +43,10 @@ cli.py
 ├── models/entry.py (RaceEntry, ShutubaData) - DTOs
 ├── scrapers/ (HorseDetailScraper, RaceDetailScraper, RaceListScraper)
 ├── scrapers/shutuba.py (ShutubaScraper) - 出馬表スクレイピング
-├── services/prediction_service.py (PredictionService, PredictionResult)
+├── services/prediction_service.py (PredictionService, PredictionResult - combined_score含む)
 ├── analyzers/factors/ (7 factors)
 ├── analyzers/score_calculator.py
-├── ml/ (FeatureBuilder, Trainer, Predictor)
+├── ml/ (FeatureBuilder, Trainer, Predictor, find_latest_model)
 ├── backtest/ (BacktestEngine, MetricsCalculator, BacktestReporter)
 └── utils/grade_extractor.py
 
@@ -51,13 +55,24 @@ analyzers/score_calculator.py
 
 ml/trainer.py
 ├── lightgbm (LGBMClassifier)
-└── sklearn (StratifiedKFold, metrics)
+├── sklearn (StratifiedKFold, metrics)
+└── joblib (model persistence)
 
 ml/predictor.py
 └── lightgbm (LGBMClassifier)
 
 ml/feature_builder.py
 └── (pure Python, no external deps)
+
+ml/model_utils.py
+└── pathlib (Path)
+
+services/prediction_service.py
+├── analyzers/factors/ (7 factors)
+├── analyzers/score_calculator.py
+├── models/entry.py (ShutubaData, RaceEntry)
+├── ml/feature_builder.py (FeatureBuilder)
+└── joblib (model loading)
 
 backtest/backtester.py
 ├── contextlib (contextmanager)
@@ -80,7 +95,9 @@ backtest/reporter.py
 backtest/fukusho_simulator.py
 ├── sqlalchemy (create_engine, select, Session)
 ├── models/ (Race, RaceResult)
-└── scrapers/race_detail.py (RaceDetailScraper.fetch_payouts)
+├── models/entry.py (RaceEntry, ShutubaData)
+├── scrapers/race_detail.py (RaceDetailScraper.fetch_payouts)
+└── services/prediction_service.py (PredictionService)
 ```
 
 ## Data Flow
@@ -113,11 +130,12 @@ backtest/fukusho_simulator.py
 [PredictionService]
     ├── RaceResultRepository (DB past results, データリーク防止: before_date)
     ├── analyzers/factors/ (7 factors)
-    └── ml/predictor (optional)
+    ├── ml/predictor (optional, via model_path)
+    └── _calculate_combined_score() (幾何平均)
     ↓
-[PredictionResult per horse]
+[PredictionResult per horse (ml_probability, factor_scores, total_score, combined_score)]
     ↓ cli.py (predict command)
-[Output: Prediction Table]
+[Output: Prediction Table (combined_score降順)]
 ```
 
 ### Backtest Pipeline
@@ -162,6 +180,20 @@ backtest/fukusho_simulator.py
 [Updated Markdown with Review]
 ```
 
+### Train Pipeline (train command)
+
+```
+[SQLite DB]
+    ↓ cli.py (train)
+[_build_training_data() - cutoff_date前のデータ]
+    ↓ ml/feature_builder
+[Features (19種)]
+    ↓ ml/trainer (train_with_cv)
+[LightGBM Model + CV Metrics]
+    ↓ trainer.save_model()
+[data/models/*.joblib]
+```
+
 ## CLI Commands
 
 | Command | Handler | Description |
@@ -175,6 +207,7 @@ backtest/fukusho_simulator.py
 | `migrate-grades` | `cli.migrate_grades()` | グレード情報マイグレーション |
 | `backtest` | `cli.backtest()` | ML予測のバックテスト検証 |
 | `backtest-fukusho` | `cli.backtest_fukusho()` | 複勝馬券バックテストシミュレーション |
+| `train` | `cli.train()` | MLモデル学習・保存 |
 
 ## External Dependencies
 
@@ -187,6 +220,8 @@ backtest/fukusho_simulator.py
 | click | >=8.0 | CLI |
 | lightgbm | >=4.0.0 | ML (Gradient Boosting) |
 | scikit-learn | >=1.3.0 | ML Utilities |
+| joblib | - | Model Persistence |
+| numpy | - | Numerical Computing |
 
 ## Test Structure
 
@@ -208,7 +243,8 @@ tests/
 │   ├── __init__.py
 │   ├── test_predict_day.py          # predict-dayコマンドテスト
 │   ├── test_review_day.py           # review-dayコマンドテスト
-│   └── test_predict_review.py       # predict/review統合テスト
+│   ├── test_predict_review.py       # predict/review統合テスト
+│   └── test_train_command.py        # trainコマンドテスト
 ├── scrapers/                        # スクレイパーテスト
 │   ├── __init__.py
 │   ├── test_shutuba.py              # 出馬表スクレイパーテスト
@@ -224,7 +260,8 @@ tests/
 │   ├── conftest.py                  # ML共通フィクスチャ
 │   ├── test_feature_builder.py      # 特徴量ビルダーテスト
 │   ├── test_predictor.py            # 予測器テスト
-│   └── test_trainer.py              # 学習器テスト
+│   ├── test_trainer.py              # 学習器テスト
+│   └── test_model_utils.py          # モデルユーティリティテスト
 └── backtest/                        # バックテストモジュールテスト
     ├── __init__.py
     ├── test_backtester.py           # バックテストエンジンテスト
@@ -244,9 +281,28 @@ tests/
 | `_parse_predictions_markdown()` | 予測MarkdownファイルをパースしてDict化 | cli.py |
 | `_calculate_fukusho_simulation()` | 複勝シミュレーション（的中率/回収率）計算 | cli.py |
 | `_append_review_to_markdown()` | 検証結果をMarkdownに追記 | cli.py |
+| `_build_training_data()` | ML学習用データ構築（cutoff date前） | cli.py |
+| `_calculate_past_stats()` | 派生特徴量計算（勝率、Top3率等） | cli.py |
 
 ## Constants
 
 | Constant | Purpose | Location |
 |----------|---------|----------|
 | `VENUE_CODE_MAP` | 競馬場名→コード（2桁）マッピング | cli.py |
+| `JRA_COURSE_CODES` | JRA競馬場コード定義 | constants.py |
+
+## Model Configuration
+
+### Trainer Parameters
+
+| Mode | num_leaves | learning_rate | n_estimators | Purpose |
+|------|------------|---------------|--------------|---------|
+| Normal | 31 | 0.05 | 100 | 本番学習用 |
+| Lightweight | 15 | 0.1 | 50 | バックテスト用 |
+
+### Model Storage
+
+- 保存形式: `.joblib` (joblib.dump)
+- デフォルトパス: `data/models/`
+- 命名規則: タイムスタンプベース
+- 最新モデル検索: `find_latest_model(model_dir)` (st_mtime順)

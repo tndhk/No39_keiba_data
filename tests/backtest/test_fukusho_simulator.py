@@ -906,6 +906,7 @@ class TestSimulateRaceWithPredictionService:
                     "running_style": 65.0,
                 },
                 total_score=75.0,
+                combined_score=None,
                 rank=1,
             ),
             PredictionResult(
@@ -923,6 +924,7 @@ class TestSimulateRaceWithPredictionService:
                     "running_style": 55.0,
                 },
                 total_score=65.0,
+                combined_score=None,
                 rank=2,
             ),
             PredictionResult(
@@ -940,6 +942,7 @@ class TestSimulateRaceWithPredictionService:
                     "running_style": 45.0,
                 },
                 total_score=55.0,
+                combined_score=None,
                 rank=3,
             ),
             PredictionResult(
@@ -957,6 +960,7 @@ class TestSimulateRaceWithPredictionService:
                     "running_style": 35.0,
                 },
                 total_score=45.0,
+                combined_score=None,
                 rank=4,
             ),
             PredictionResult(
@@ -974,6 +978,7 @@ class TestSimulateRaceWithPredictionService:
                     "running_style": 25.0,
                 },
                 total_score=35.0,
+                combined_score=None,
                 rank=5,
             ),
         ]
@@ -1059,6 +1064,7 @@ class TestSimulateRaceWithPredictionService:
                 ml_probability=0.0,
                 factor_scores={"past_results": 85.0},
                 total_score=85.0,
+                combined_score=None,
                 rank=1,
             ),
             PredictionResult(
@@ -1068,6 +1074,7 @@ class TestSimulateRaceWithPredictionService:
                 ml_probability=0.0,
                 factor_scores={"past_results": 80.0},
                 total_score=80.0,
+                combined_score=None,
                 rank=2,
             ),
             PredictionResult(
@@ -1077,6 +1084,7 @@ class TestSimulateRaceWithPredictionService:
                 ml_probability=0.0,
                 factor_scores={"past_results": 75.0},
                 total_score=75.0,
+                combined_score=None,
                 rank=3,
             ),
             PredictionResult(
@@ -1086,6 +1094,7 @@ class TestSimulateRaceWithPredictionService:
                 ml_probability=0.0,
                 factor_scores={"past_results": 70.0},
                 total_score=70.0,
+                combined_score=None,
                 rank=4,
             ),
             PredictionResult(
@@ -1095,6 +1104,7 @@ class TestSimulateRaceWithPredictionService:
                 ml_probability=0.0,
                 factor_scores={"past_results": 65.0},
                 total_score=65.0,
+                combined_score=None,
                 rank=5,
             ),
         ]

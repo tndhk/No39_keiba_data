@@ -24,6 +24,7 @@ pytest tests/ --cov=keiba --cov-report=term-missing
 # CLIコマンド例
 keiba scrape --year 2024 --month 1 --db data/keiba.db --jra-only
 keiba analyze --db data/keiba.db --date 2024-01-06 --venue 中山
+keiba train --db data/keiba.db --output data/models/model.joblib
 keiba predict-day --venue 中山 --db data/keiba.db
 keiba review-day --venue 中山 --db data/keiba.db
 keiba backtest-fukusho --db data/keiba.db -v
@@ -57,7 +58,8 @@ CLI (keiba/cli.py)
     ├── ML (keiba/ml/)
     │   ├── FeatureBuilder       # 特徴量構築
     │   ├── Trainer              # LightGBMモデル学習
-    │   └── Predictor            # 3着以内確率予測
+    │   ├── Predictor            # 3着以内確率予測
+    │   └── model_utils          # モデルユーティリティ（最新モデル検索）
     │
     ├── Backtest (keiba/backtest/)
     │   ├── FukushoSimulator     # 複勝シミュレーション

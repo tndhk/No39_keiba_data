@@ -1,59 +1,59 @@
 # Data Models Codemap
 
-> Freshness: 2026-01-24 (Updated: FukushoSimulator data structures)
+> Freshness: 2026-01-25 (Updated: PredictionResult.combined_score, model storage)
 
 ## Database Schema (SQLite)
 
 ### ER Diagram
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│     horses      │     │     races       │     │    jockeys      │
-├─────────────────┤     ├─────────────────┤     ├─────────────────┤
-│ PK id (str)     │     │ PK id (str)     │     │ PK id (str)     │
-│ name            │     │ name            │     │ name            │
-│ sex             │     │ date            │     │ created_at      │
-│ birth_year      │     │ course          │     │ updated_at      │
-│ sire            │     │ race_number     │     └─────────────────┘
-│ dam             │     │ distance        │
-│ dam_sire        │     │ surface         │     ┌─────────────────┐
-│ coat_color      │     │ weather         │     │    trainers     │
-│ birthplace      │     │ track_condition │     ├─────────────────┤
-│ trainer_id      │     │ grade           │     │ PK id (str)     │
-│ owner_id        │     │ created_at      │     │ name            │
-│ breeder_id      │     │ updated_at      │     │ created_at      │
-│ total_races     │     └─────────────────┘     │ updated_at      │
-│ total_wins      │              │              └─────────────────┘
-│ total_earnings  │              │
-│ created_at      │              │              ┌─────────────────┐
-│ updated_at      │              │              │     owners      │
-└─────────────────┘              │              ├─────────────────┤
-         │                       │              │ PK id (str)     │
-         │       ┌───────────────┴──────────┐   │ name            │
-         │       │       race_results       │   │ created_at      │
-         │       ├──────────────────────────┤   │ updated_at      │
-         └──────→│ PK id (int, auto)        │   └─────────────────┘
-                 │ FK race_id → races.id    │
-                 │ FK horse_id → horses.id  │   ┌─────────────────┐
-                 │ FK jockey_id → jockeys   │   │    breeders     │
-                 │ FK trainer_id → trainers │   ├─────────────────┤
-                 │ finish_position          │   │ PK id (str)     │
-                 │ bracket_number           │   │ name            │
-                 │ horse_number             │   │ created_at      │
-                 │ odds                     │   │ updated_at      │
-                 │ popularity               │   └─────────────────┘
-                 │ weight                   │
-                 │ weight_diff              │
-                 │ time                     │
-                 │ margin                   │
-                 │ last_3f                  │
-                 │ sex                      │
-                 │ age                      │
-                 │ impost                   │
-                 │ passing_order            │
-                 │ created_at               │
-                 │ updated_at               │
-                 └──────────────────────────┘
++-------------------+     +-------------------+     +-------------------+
+|     horses        |     |     races         |     |    jockeys        |
++-------------------+     +-------------------+     +-------------------+
+| PK id (str)       |     | PK id (str)       |     | PK id (str)       |
+| name              |     | name              |     | name              |
+| sex               |     | date              |     | created_at        |
+| birth_year        |     | course            |     | updated_at        |
+| sire              |     | race_number       |     +-------------------+
+| dam               |     | distance          |
+| dam_sire          |     | surface           |     +-------------------+
+| coat_color        |     | weather           |     |    trainers       |
+| birthplace        |     | track_condition   |     +-------------------+
+| trainer_id        |     | grade             |     | PK id (str)       |
+| owner_id          |     | created_at        |     | name              |
+| breeder_id        |     | updated_at        |     | created_at        |
+| total_races       |     +-------------------+     | updated_at        |
+| total_wins        |              |              +-------------------+
+| total_earnings    |              |
+| created_at        |              |              +-------------------+
+| updated_at        |              |              |     owners        |
++-------------------+              |              +-------------------+
+         |                         |              | PK id (str)       |
+         |       +-----------------+----------+   | name              |
+         |       |       race_results         |   | created_at        |
+         |       +----------------------------+   | updated_at        |
+         +------>| PK id (int, auto)          |   +-------------------+
+                 | FK race_id -> races.id     |
+                 | FK horse_id -> horses.id   |   +-------------------+
+                 | FK jockey_id -> jockeys    |   |    breeders       |
+                 | FK trainer_id -> trainers  |   +-------------------+
+                 | finish_position            |   | PK id (str)       |
+                 | bracket_number             |   | name              |
+                 | horse_number               |   | created_at        |
+                 | odds                       |   | updated_at        |
+                 | popularity                 |   +-------------------+
+                 | weight                     |
+                 | weight_diff                |
+                 | time                       |
+                 | margin                     |
+                 | last_3f                    |
+                 | sex                        |
+                 | age                        |
+                 | impost                     |
+                 | passing_order              |
+                 | created_at                 |
+                 | updated_at                 |
+                 +----------------------------+
 ```
 
 ## Table Details
@@ -193,9 +193,43 @@ FACTOR_WEIGHTS = {
 # Total: 1.000
 ```
 
-## Backtest Data Structures
+## Service Layer Data Structures
 
 ### PredictionResult
+
+```python
+# keiba/services/prediction_service.py
+
+@dataclass(frozen=True)
+class PredictionResult:
+    """予測結果（イミュータブル）"""
+    horse_number: int           # 馬番
+    horse_name: str             # 馬名
+    horse_id: str               # 馬ID
+    ml_probability: float       # ML予測確率 (0.0-1.0)
+    factor_scores: dict[str, float | None]  # 7因子スコア
+    total_score: float | None   # 重み付き総合スコア (0-100)
+    combined_score: float | None  # 複合スコア (幾何平均)  # NEW
+    rank: int                   # 予測順位 (combined_score降順)
+```
+
+### Combined Score Formula
+
+```python
+def _calculate_combined_score(
+    ml_probability: float,
+    max_ml_probability: float,
+    total_score: float | None,
+) -> float | None:
+    """
+    normalized_ml = (ml_probability / max_ml_probability) * 100
+    combined = sqrt(normalized_ml * total_score)
+    """
+```
+
+## Backtest Data Structures
+
+### PredictionResult (backtest/metrics.py)
 
 ```python
 # keiba/backtest/metrics.py
@@ -277,6 +311,41 @@ dict[str, list[dict]]  # {horse_id: [{"race_id": ..., "finish_position": ..., ..
 # _get_horses_batch() の返却値
 # horse_idをキー、Horseオブジェクトを値とする辞書
 dict[str, Horse]  # {horse_id: Horse(id=..., name=..., sex=..., ...)}
+```
+
+## Entry DTOs (keiba/models/entry.py)
+
+### RaceEntry
+
+```python
+@dataclass(frozen=True)
+class RaceEntry:
+    """出走馬エントリー（イミュータブル）"""
+    horse_id: str           # 馬ID
+    horse_name: str         # 馬名
+    horse_number: int       # 馬番
+    bracket_number: int     # 枠番
+    jockey_id: str          # 騎手ID
+    jockey_name: str        # 騎手名
+    impost: float           # 斤量
+    sex: Optional[str] = None   # 性別
+    age: Optional[int] = None   # 年齢
+```
+
+### ShutubaData
+
+```python
+@dataclass(frozen=True)
+class ShutubaData:
+    """出馬表データ（イミュータブル）"""
+    race_id: str                    # レースID
+    race_name: str                  # レース名
+    race_number: int                # レース番号 (1-12)
+    course: str                     # 競馬場名
+    distance: int                   # 距離 (m)
+    surface: str                    # 芝/ダート
+    date: str                       # 開催日
+    entries: tuple[RaceEntry, ...]  # 出走馬リスト（イミュータブル）
 ```
 
 ## Scraper Methods
@@ -429,11 +498,11 @@ VENUE_CODE_MAP = {
 
 ```
 202606010801
-│  │ │ │ │└── レース番号 (01-12)
-│  │ │ │└──── 開催日数 (01-12)
-│  │ │└────── 開催回数 (01-05)
-│  │└──────── 競馬場コード (01-10)
-└──┴───────── 年 (西暦4桁)
+|  | | | |+-- レース番号 (01-12)
+|  | | |+---- 開催日数 (01-12)
+|  | |+------ 開催回数 (01-05)
+|  |+-------- 競馬場コード (01-10)
++--+--------- 年 (西暦4桁)
 ```
 
 ## FukushoSimulator Data Structures
@@ -487,7 +556,7 @@ class FukushoSimulator:
     """複勝馬券シミュレータ
 
     予測モデルの出力を使用して、複勝馬券の購入戦略をシミュレートする。
-    現在の実装は人気順で予測を行う（ベースライン）。
+    PredictionServiceを使用して7因子スコアとML予測を組み合わせて予測。
     """
 
     def __init__(self, db_path: str) -> None: ...
@@ -505,3 +574,37 @@ class FukushoSimulator:
     ) -> FukushoSummary:
         """期間シミュレーションを実行"""
         ...
+```
+
+## Model Storage
+
+### File Format
+
+```
+data/models/
+└── model_YYYYMMDD_HHMMSS.joblib  # LightGBM model (joblib serialized)
+```
+
+### Model Loading
+
+```python
+# keiba/ml/model_utils.py
+def find_latest_model(model_dir: str) -> str | None:
+    """最新の.joblibファイルパスを返す（st_mtime順）"""
+
+# keiba/services/prediction_service.py
+def _load_model(self, model_path: str) -> None:
+    """joblib.loadでモデルをロード"""
+    import joblib
+    self._model = joblib.load(model_path)
+```
+
+### Model Saving
+
+```python
+# keiba/ml/trainer.py
+def save_model(self, path: str) -> None:
+    """joblib.dumpでモデルを保存"""
+    import joblib
+    joblib.dump(self.model, path)
+```

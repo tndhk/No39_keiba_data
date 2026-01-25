@@ -70,6 +70,12 @@ ML予測機能:
 - 血統: 父・母父系統の距離・馬場適性（14.3%）
 - 脚質: 脚質傾向とコース有利脚質のマッチ度（14.2%）
 
+複合スコア（combined_score）:
+- ML確率と7因子総合スコアを幾何平均で統合した指標
+- 計算式: sqrt((ML確率/最大ML確率 x 100) x 総合スコア)
+- CLI表示で「複合」列として表示
+- 予測結果のデフォルトソート順
+
 ### 出馬表予測（リアルタイム）
 
 未開催レースの出馬表URLから予測を実行。netkeibaの出馬表ページをスクレイピングして各馬の7因子スコアを計算。
@@ -188,6 +194,40 @@ keiba migrate-grades --db data/keiba.db
 # 完了
 #   更新したレース: 1500件
 ```
+
+### MLモデルの学習
+
+予測に使用するLightGBMモデルを学習して保存。
+
+```bash
+# 基本使用法（今日以前のデータで学習）
+keiba train --db data/keiba.db --output data/models/model.joblib
+
+# カットオフ日付を指定（特定日以前のデータで学習）
+keiba train --db data/keiba.db --output data/models/model.joblib --cutoff-date 2026-01-01
+
+# 出力例
+# 学習開始
+# データベース: data/keiba.db
+# 出力先: data/models/model.joblib
+# カットオフ日付: 2026-01-25
+#
+# 学習データを構築中...
+# 学習データ: 15000サンプル
+# モデルを学習中...
+#
+# 学習完了
+#   Precision@1: 35.2%
+#   Precision@3: 58.4%
+#   AUC-ROC: 0.725
+#
+# モデルを保存しました: data/models/model.joblib
+```
+
+推奨ワークフロー:
+1. 週次で新しいモデルを学習（日曜日のレース終了後）
+2. モデルファイルはタイムスタンプ付きで管理: `model-YYYYMMDD.joblib`
+3. `predict`コマンドは`data/models/`から最新の`.joblib`を自動検出
 
 ## 定期実行の設定
 
@@ -506,4 +546,4 @@ DELETE FROM races WHERE id LIKE '202403%';
 ```
 
 ---
-Freshness: 2026-01-24
+Freshness: 2026-01-25
