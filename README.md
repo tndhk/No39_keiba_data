@@ -30,7 +30,7 @@ git clone <repository-url>
 cd keiba
 
 # 仮想環境作成・有効化
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate  # Linux/macOS
 # .venv\Scripts\activate  # Windows
 
@@ -42,10 +42,10 @@ pip install -e ".[dev]"
 
 ```bash
 # 2024年1月のレースデータを収集
-keiba scrape --year 2024 --month 1 --db data/keiba.db
+keiba scrape --year 2024 --month 1 --db data/keiba.db --jra-only
 
 # または
-python -m keiba scrape --year 2024 --month 1 --db data/keiba.db
+python3 -m keiba scrape --year 2024 --month 1 --db data/keiba.db --jra-only
 ```
 
 ### オプション
