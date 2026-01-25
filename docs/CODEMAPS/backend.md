@@ -1,6 +1,6 @@
 # Backend Codemap
 
-> Freshness: 2026-01-25 (Created: CLI, Services, Scrapers structure)
+> Freshness: 2026-01-25 (Verified: CLI commands, Services, Scrapers, Backtest, Tansho simulation)
 
 ## Overview
 
@@ -25,7 +25,7 @@ cli.py
 ├── analyze         # レース分析 + ML予測
 ├── predict         # 出馬表URLから予測
 ├── predict-day     # 指定日・競馬場の全レース予測
-├── review-day      # 予測結果と実績比較
+├── review-day      # 予測結果と実績比較（複勝・単勝シミュレーション）
 ├── migrate-grades  # グレード情報マイグレーション
 ├── backtest        # ML予測バックテスト
 ├── backtest-fukusho # 複勝シミュレーション
@@ -64,8 +64,9 @@ class SQLAlchemyRaceResultRepository:
 | `_get_race_ids_for_venue()` | 1396-1417 | 競馬場コードフィルタ |
 | `_save_predictions_markdown()` | 1420-1514 | 予測結果Markdown保存 |
 | `_parse_predictions_markdown()` | 1673-1789 | 予測Markdownパース |
-| `_calculate_fukusho_simulation()` | 1792-1903 | 複勝シミュレーション計算 |
-| `_append_review_to_markdown()` | 1906-1968 | 検証結果Markdown追記 |
+| `_calculate_fukusho_simulation()` | 1792-1906 | 複勝シミュレーション計算 |
+| `_calculate_tansho_simulation()` | 1909-1988 | 単勝シミュレーション計算 |
+| `_append_review_to_markdown()` | 1991- | 検証結果Markdown追記 |
 
 ## Services (keiba/services/)
 
@@ -160,6 +161,13 @@ class RaceDetailScraper:
 
         Returns:
             [{"horse_number": 5, "payout": 150}, ...]
+        """
+
+    def fetch_tansho_payout(self, race_id: str) -> dict | None:
+        """単勝払戻金を取得
+
+        Returns:
+            {"horse_number": 5, "payout": 350} or None
         """
 ```
 

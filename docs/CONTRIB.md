@@ -2,7 +2,7 @@
 
 競馬データ収集システムの開発ワークフローガイド。
 
-> Freshness: 2026-01-25 (Updated: combined_score機能、trainコマンド追加)
+> Freshness: 2026-01-25 (Verified: combined_score, train command, backtest-fukusho, tansho simulation)
 
 ## 環境セットアップ
 
@@ -213,7 +213,7 @@ keiba predict-day --date 2026-01-25 --venue 東京 --db data/keiba.db
 
 ### keiba review-day
 
-予測結果ファイルと実際のレース結果を比較検証。複勝シミュレーションを計算。
+予測結果ファイルと実際のレース結果を比較検証。複勝・単勝シミュレーションを計算。
 
 ```bash
 # 今日の中山の予測結果を検証
@@ -232,8 +232,19 @@ keiba review-day --date 2026-01-24 --venue 中山 --db data/keiba.db
 検証内容:
 - 予測ファイル（`docs/predictions/YYYY-MM-DD-{venue}.md`）を読み込み
 - `RaceDetailScraper.fetch_payouts()`で複勝払戻金を取得
+- `RaceDetailScraper.fetch_tansho_payout()`で単勝払戻金を取得
 - 複勝シミュレーション（予測1位のみ、予測1-3位）を計算
+- 単勝シミュレーション（予測1位のみ、予測1-3位）を計算
 - 結果をMarkdownファイルに追記
+
+シミュレーション種類:
+
+| 券種 | 戦略 | 賭け方 | 的中条件 |
+|------|------|--------|----------|
+| 複勝 | 予測1位のみ | 予測1位に100円 | 3着以内 |
+| 複勝 | 予測1-3位 | 予測1-3位に各100円（計300円） | いずれかが3着以内 |
+| 単勝 | 予測1位のみ | 予測1位に100円 | 1着 |
+| 単勝 | 予測1-3位 | 予測1-3位に各100円（計300円） | いずれかが1着 |
 
 ### keiba backtest
 

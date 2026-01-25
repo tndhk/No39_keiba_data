@@ -1,6 +1,6 @@
 # Data Models Codemap
 
-> Freshness: 2026-01-25 (Updated: PredictionResult.combined_score, model storage)
+> Freshness: 2026-01-25 (Verified: PredictionResult, combined_score, FukushoSimulator)
 
 ## Database Schema (SQLite)
 

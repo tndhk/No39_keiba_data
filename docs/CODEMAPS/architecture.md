@@ -1,6 +1,6 @@
 # Architecture Codemap
 
-> Freshness: 2026-01-25 (Updated: train command, combined_score, model_utils)
+> Freshness: 2026-01-25 (Verified: train, combined_score, model_utils, backtest-fukusho)
 
 ## System Overview
 
