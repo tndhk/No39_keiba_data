@@ -30,9 +30,6 @@ data/models/
 .DS_Store
 Thumbs.db
 
-# Claude Code
-.claude/
-
 # Worktrees
 .worktrees/
 
