@@ -14,6 +14,11 @@ from keiba.backtest.umaren_simulator import (
     UmarenSimulator,
     UmarenSummary,
 )
+from keiba.backtest.sanrenpuku_simulator import (
+    SanrenpukuRaceResult,
+    SanrenpukuSimulator,
+    SanrenpukuSummary,
+)
 from keiba.backtest.metrics import (
     MetricsCalculator,
     PredictionResult,
@@ -34,4 +39,7 @@ __all__ = [
     "UmarenRaceResult",
     "UmarenSimulator",
     "UmarenSummary",
+    "SanrenpukuRaceResult",
+    "SanrenpukuSimulator",
+    "SanrenpukuSummary",
 ]
