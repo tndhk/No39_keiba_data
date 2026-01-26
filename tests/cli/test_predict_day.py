@@ -939,3 +939,228 @@ class TestPredictCommandModelAutoDetection:
         # PredictionServiceがmodel_path=Noneで初期化されることを確認
         call_kwargs = mock_prediction_service.call_args.kwargs
         assert call_kwargs.get("model_path") is None
+
+
+class TestPredictDayDebutRaceSkip:
+    """predict-day コマンドの新馬戦スキップテスト"""
+
+    @patch("keiba.cli.commands.predict.save_predictions_markdown")
+    @patch("keiba.cli.commands.predict.PredictionService")
+    @patch("keiba.cli.commands.predict.ShutubaScraper")
+    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.get_session")
+    @patch("keiba.cli.commands.predict.get_engine")
+    def test_predict_day_shows_skip_message_for_debut_race(
+        self,
+        mock_get_engine,
+        mock_get_session,
+        mock_race_list_scraper,
+        mock_shutuba_scraper,
+        mock_prediction_service,
+        mock_save_markdown,
+    ):
+        """新馬戦の場合に「予測対象外」メッセージを表示する"""
+        # Setup mocks
+        mock_engine = MagicMock()
+        mock_get_engine.return_value = mock_engine
+        mock_session = MagicMock()
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_list_scraper = MagicMock()
+        mock_list_scraper.fetch_race_urls.return_value = [
+            "https://db.netkeiba.com/race/202606010801/",  # 中山
+        ]
+        mock_race_list_scraper.return_value = mock_list_scraper
+
+        # ShutubaScraper のモック（新馬戦）
+        mock_shutuba = MagicMock()
+        mock_shutuba.fetch_shutuba.return_value = MagicMock(
+            race_id="202606010801",
+            race_name="2歳新馬",
+            race_number=1,
+            course="中山",
+            distance=1600,
+            surface="芝",
+            date="2026年6月1日",
+            entries=(),
+        )
+        mock_shutuba_scraper.return_value = mock_shutuba
+
+        # PredictionService のモック（新馬戦なので空リスト）
+        mock_service = MagicMock()
+        mock_service.predict_from_shutuba.return_value = []
+        mock_prediction_service.return_value = mock_service
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main,
+                [
+                    "predict-day",
+                    "--venue",
+                    "中山",
+                    "--date",
+                    "2026-06-01",
+                    "--db",
+                    "test.db",
+                ],
+            )
+
+        # 「予測対象外」メッセージが出力されることを確認
+        assert "新馬戦のため予測対象外" in result.output
+
+    @patch("keiba.cli.commands.predict.save_predictions_markdown")
+    @patch("keiba.cli.commands.predict.PredictionService")
+    @patch("keiba.cli.commands.predict.ShutubaScraper")
+    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.get_session")
+    @patch("keiba.cli.commands.predict.get_engine")
+    def test_predict_day_sets_skipped_flag_for_debut_race(
+        self,
+        mock_get_engine,
+        mock_get_session,
+        mock_race_list_scraper,
+        mock_shutuba_scraper,
+        mock_prediction_service,
+        mock_save_markdown,
+    ):
+        """新馬戦の場合に predictions_data に skipped=True を設定する"""
+        # Setup mocks
+        mock_engine = MagicMock()
+        mock_get_engine.return_value = mock_engine
+        mock_session = MagicMock()
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_list_scraper = MagicMock()
+        mock_list_scraper.fetch_race_urls.return_value = [
+            "https://db.netkeiba.com/race/202606010801/",  # 中山
+        ]
+        mock_race_list_scraper.return_value = mock_list_scraper
+
+        # ShutubaScraper のモック（新馬戦）
+        mock_shutuba = MagicMock()
+        mock_shutuba.fetch_shutuba.return_value = MagicMock(
+            race_id="202606010801",
+            race_name="2歳新馬",
+            race_number=1,
+            course="中山",
+            distance=1600,
+            surface="芝",
+            date="2026年6月1日",
+            entries=(),
+        )
+        mock_shutuba_scraper.return_value = mock_shutuba
+
+        # PredictionService のモック（新馬戦なので空リスト）
+        mock_service = MagicMock()
+        mock_service.predict_from_shutuba.return_value = []
+        mock_prediction_service.return_value = mock_service
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main,
+                [
+                    "predict-day",
+                    "--venue",
+                    "中山",
+                    "--date",
+                    "2026-06-01",
+                    "--db",
+                    "test.db",
+                ],
+            )
+
+        # save_predictions_markdown に渡されたデータを検証
+        mock_save_markdown.assert_called_once()
+        call_args = mock_save_markdown.call_args
+        predictions_data = call_args.kwargs.get(
+            "predictions_data", call_args.args[0] if call_args.args else None
+        )
+
+        assert len(predictions_data) == 1
+        assert predictions_data[0]["skipped"] is True
+        assert predictions_data[0]["predictions"] == []
+
+    @patch("keiba.cli.commands.predict.save_predictions_markdown")
+    @patch("keiba.cli.commands.predict.PredictionService")
+    @patch("keiba.cli.commands.predict.ShutubaScraper")
+    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.get_session")
+    @patch("keiba.cli.commands.predict.get_engine")
+    def test_predict_day_sets_skipped_false_for_normal_race(
+        self,
+        mock_get_engine,
+        mock_get_session,
+        mock_race_list_scraper,
+        mock_shutuba_scraper,
+        mock_prediction_service,
+        mock_save_markdown,
+    ):
+        """通常レースの場合に predictions_data に skipped=False を設定する"""
+        # Setup mocks
+        mock_engine = MagicMock()
+        mock_get_engine.return_value = mock_engine
+        mock_session = MagicMock()
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_list_scraper = MagicMock()
+        mock_list_scraper.fetch_race_urls.return_value = [
+            "https://db.netkeiba.com/race/202606010801/",  # 中山
+        ]
+        mock_race_list_scraper.return_value = mock_list_scraper
+
+        # ShutubaScraper のモック（通常レース）
+        mock_shutuba = MagicMock()
+        mock_shutuba.fetch_shutuba.return_value = MagicMock(
+            race_id="202606010801",
+            race_name="3歳以上1勝クラス",
+            race_number=1,
+            course="中山",
+            distance=1600,
+            surface="芝",
+            date="2026年6月1日",
+            entries=(),
+        )
+        mock_shutuba_scraper.return_value = mock_shutuba
+
+        # PredictionService のモック（通常レースなので予測結果あり）
+        mock_service = MagicMock()
+        mock_prediction = MagicMock()
+        mock_prediction.rank = 1
+        mock_prediction.horse_number = 5
+        mock_prediction.horse_name = "テストホース"
+        mock_prediction.ml_probability = 0.65
+        mock_prediction.combined_score = 75.0
+        mock_prediction.total_score = 75.5
+        mock_service.predict_from_shutuba.return_value = [mock_prediction]
+        mock_prediction_service.return_value = mock_service
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main,
+                [
+                    "predict-day",
+                    "--venue",
+                    "中山",
+                    "--date",
+                    "2026-06-01",
+                    "--db",
+                    "test.db",
+                ],
+            )
+
+        # save_predictions_markdown に渡されたデータを検証
+        mock_save_markdown.assert_called_once()
+        call_args = mock_save_markdown.call_args
+        predictions_data = call_args.kwargs.get(
+            "predictions_data", call_args.args[0] if call_args.args else None
+        )
+
+        assert len(predictions_data) == 1
+        assert predictions_data[0]["skipped"] is False
+        assert len(predictions_data[0]["predictions"]) == 1

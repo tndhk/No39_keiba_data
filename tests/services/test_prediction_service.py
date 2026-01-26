@@ -348,11 +348,51 @@ class TestPredictFromShutuba:
 
 
 class TestCombinedScoreCalculation:
-    """複合スコア計算のテスト"""
+    """複合スコア計算のテスト（加重平均方式）"""
 
-    def test_combined_score_geometric_mean(self):
-        """幾何平均で計算されること"""
-        # normalized_ml=100 (2% / 2% * 100), total_score=80 -> sqrt(100*80)=89.4
+    def test_combined_score_uses_weighted_average(self):
+        """加重平均で複合スコアを計算する
+
+        alpha = 0.6 の場合:
+        正規化ML = (0.5 / 1.0) * 100 = 50
+        複合 = 0.6 * 50 + 0.4 * 80 = 30 + 32 = 62
+        """
+        mock_repo = Mock(spec=RaceResultRepository)
+        mock_repo.get_past_results.return_value = []
+        service = PredictionService(repository=mock_repo)
+
+        result = service._calculate_combined_score(
+            ml_probability=0.5,
+            max_ml_probability=1.0,
+            total_score=80.0,
+        )
+        assert result == 62.0
+
+    def test_combined_score_with_low_ml_probability(self):
+        """ML確率が低くても総合スコアが高ければ適度な評価
+
+        alpha = 0.6 の場合:
+        正規化ML = (0.1 / 1.0) * 100 = 10
+        複合 = 0.6 * 10 + 0.4 * 90 = 6 + 36 = 42
+        """
+        mock_repo = Mock(spec=RaceResultRepository)
+        mock_repo.get_past_results.return_value = []
+        service = PredictionService(repository=mock_repo)
+
+        result = service._calculate_combined_score(
+            ml_probability=0.1,
+            max_ml_probability=1.0,
+            total_score=90.0,
+        )
+        assert result == 42.0
+
+    def test_combined_score_with_max_ml_probability(self):
+        """ML確率が最大の場合の計算
+
+        alpha = 0.6 の場合:
+        正規化ML = (0.02 / 0.02) * 100 = 100
+        複合 = 0.6 * 100 + 0.4 * 80 = 60 + 32 = 92
+        """
         mock_repo = Mock(spec=RaceResultRepository)
         mock_repo.get_past_results.return_value = []
         service = PredictionService(repository=mock_repo)
@@ -362,11 +402,15 @@ class TestCombinedScoreCalculation:
             max_ml_probability=0.02,
             total_score=80.0
         )
-        assert score == pytest.approx(89.4, rel=0.1)
+        assert score == 92.0
 
     def test_combined_score_partial_ml(self):
-        """ML確率が最大より低い場合の計算"""
-        # normalized_ml=50 (1% / 2% * 100), total_score=80 -> sqrt(50*80)=63.2
+        """ML確率が最大より低い場合の計算
+
+        alpha = 0.6 の場合:
+        正規化ML = (0.01 / 0.02) * 100 = 50
+        複合 = 0.6 * 50 + 0.4 * 80 = 30 + 32 = 62
+        """
         mock_repo = Mock(spec=RaceResultRepository)
         mock_repo.get_past_results.return_value = []
         service = PredictionService(repository=mock_repo)
@@ -376,7 +420,7 @@ class TestCombinedScoreCalculation:
             max_ml_probability=0.02,
             total_score=80.0
         )
-        assert score == pytest.approx(63.2, rel=0.1)
+        assert score == 62.0
 
     def test_combined_score_none_when_no_total_score(self):
         """total_scoreがNoneの場合はNone"""
@@ -452,3 +496,83 @@ class TestPredictionResultDataclass:
             rank=1,
         )
         assert result.combined_score is None
+
+
+class TestIsDebutRace:
+    """新馬戦判定メソッドのテスト"""
+
+    def test_is_debut_race_returns_true_for_shinba(self):
+        """新馬戦のレース名に対してTrueを返す"""
+        assert PredictionService.is_debut_race("2歳新馬") is True
+
+    def test_is_debut_race_returns_false_for_regular_race(self):
+        """通常レースに対してFalseを返す"""
+        assert PredictionService.is_debut_race("皐月賞(G1)") is False
+        assert PredictionService.is_debut_race("3勝クラス") is False
+
+
+class TestPredictFromShutubaDebutRaceSkip:
+    """新馬戦スキップのテスト"""
+
+    def test_predict_from_shutuba_returns_empty_list_for_debut_race(self):
+        """新馬戦の場合は空リストを返す"""
+        # Arrange: 新馬戦の出馬表データ
+        entries = (
+            create_test_entry("horse_001", "テスト馬", 1),
+            create_test_entry("horse_002", "テスト馬2", 2),
+        )
+        shutuba = ShutubaData(
+            race_id="202401010101",
+            race_name="2歳新馬",
+            race_number=1,
+            date="2024-01-01",
+            course="中山",
+            surface="芝",
+            distance=1600,
+            entries=entries,
+        )
+
+        mock_repo = Mock(spec=RaceResultRepository)
+        mock_repo.get_past_results.return_value = []
+
+        service = PredictionService(repository=mock_repo)
+
+        # Act
+        result = service.predict_from_shutuba(shutuba)
+
+        # Assert: 新馬戦なので空リストを返す
+        assert result == []
+
+        # リポジトリは呼び出されないこと（早期リターンのため）
+        mock_repo.get_past_results.assert_not_called()
+
+    def test_predict_from_shutuba_returns_predictions_for_regular_race(self):
+        """通常レースの場合は予測結果を返す"""
+        # Arrange: 通常レースの出馬表データ
+        entries = (
+            create_test_entry("horse_001", "テスト馬", 1),
+        )
+        shutuba = ShutubaData(
+            race_id="202401010101",
+            race_name="皐月賞(G1)",
+            race_number=1,
+            date="2024-01-01",
+            course="中山",
+            surface="芝",
+            distance=2000,
+            entries=entries,
+        )
+
+        mock_repo = Mock(spec=RaceResultRepository)
+        mock_repo.get_past_results.return_value = [
+            create_mock_past_result("horse_001", 1),
+        ]
+
+        service = PredictionService(repository=mock_repo)
+
+        # Act
+        result = service.predict_from_shutuba(shutuba)
+
+        # Assert: 通常レースなので予測結果を返す
+        assert len(result) == 1
+        assert result[0].horse_name == "テスト馬"

@@ -1703,3 +1703,231 @@ class TestCalculateTanshoSimulation:
         assert result["top3"]["payout"] == 350 + 650
         assert result["top3"]["hit_rate"] == pytest.approx(2 / 3)
         assert result["top3"]["return_rate"] == pytest.approx(1000 / 900)
+
+
+class TestReviewDaySkippedRaces:
+    """review-dayコマンドでskipped=Trueのレースを除外するテスト"""
+
+    @patch("keiba.cli.commands.review.append_review_to_markdown")
+    @patch("keiba.cli.commands.review.calculate_sanrenpuku_simulation")
+    @patch("keiba.cli.commands.review.calculate_umaren_simulation")
+    @patch("keiba.cli.commands.review.calculate_tansho_simulation")
+    @patch("keiba.cli.commands.review.calculate_fukusho_simulation")
+    @patch("keiba.cli.commands.review.parse_predictions_markdown")
+    @patch("keiba.cli.commands.review.RaceDetailScraper")
+    def test_skipped_races_are_excluded_from_review(
+        self,
+        mock_scraper_class,
+        mock_parse,
+        mock_fukusho,
+        mock_tansho,
+        mock_umaren,
+        mock_sanrenpuku,
+        mock_append,
+        tmp_path,
+    ):
+        """skipped=Trueのレースは検証から除外される"""
+        # skippedレースと通常レースの混合
+        mock_parse.return_value = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "race_id": "202601010101",
+                    "race_name": "2歳新馬",
+                    "skipped": True,  # 新馬戦
+                    "predictions": [],
+                },
+                {
+                    "race_number": 2,
+                    "race_id": "202601010102",
+                    "race_name": "未勝利",
+                    "skipped": False,
+                    "predictions": [
+                        {"horse_number": 5, "rank": 1},
+                        {"horse_number": 3, "rank": 2},
+                        {"horse_number": 8, "rank": 3},
+                    ],
+                },
+                {
+                    "race_number": 3,
+                    "race_id": "202601010103",
+                    "race_name": "新馬",
+                    "skipped": True,  # 新馬戦
+                    "predictions": [],
+                },
+            ]
+        }
+
+        # 検証結果のモック
+        mock_fukusho.return_value = {
+            "top1": {
+                "hits": 1,
+                "total_races": 1,
+                "hit_rate": 1.0,
+                "payout": 150,
+                "investment": 100,
+                "return_rate": 1.5,
+            },
+            "top3": {
+                "hits": 2,
+                "total_bets": 3,
+                "hit_rate": 0.67,
+                "payout": 400,
+                "investment": 300,
+                "return_rate": 1.33,
+            },
+            "race_results": [
+                {
+                    "race_number": 2,
+                    "actual_top3": [5, 3, 1],
+                    "predicted_top3": [5, 3, 8],
+                    "top1_hit": True,
+                    "top3_hits": 2,
+                }
+            ],
+        }
+        mock_tansho.return_value = {
+            "top1": {
+                "total_races": 1,
+                "hits": 0,
+                "hit_rate": 0.0,
+                "investment": 100,
+                "payout": 0,
+                "return_rate": 0.0,
+            },
+            "top3": {
+                "total_races": 1,
+                "total_bets": 3,
+                "hits": 0,
+                "hit_rate": 0.0,
+                "investment": 300,
+                "payout": 0,
+                "return_rate": 0.0,
+            },
+        }
+        mock_umaren.return_value = {
+            "total_races": 1,
+            "hits": 0,
+            "hit_rate": 0.0,
+            "investment": 300,
+            "payout": 0,
+            "return_rate": 0.0,
+        }
+        mock_sanrenpuku.return_value = {
+            "total_races": 1,
+            "hits": 0,
+            "hit_rate": 0.0,
+            "investment": 100,
+            "payout": 0,
+            "return_rate": 0.0,
+        }
+
+        mock_scraper = MagicMock()
+        mock_scraper.fetch_payouts.return_value = [
+            {"horse_number": 5, "payout": 150},
+            {"horse_number": 3, "payout": 250},
+            {"horse_number": 1, "payout": 320},
+        ]
+        mock_scraper.fetch_tansho_payout.return_value = {"horse_number": 1, "payout": 500}
+        mock_scraper.fetch_umaren_payout.return_value = None
+        mock_scraper.fetch_sanrenpuku_payout.return_value = None
+        mock_scraper_class.return_value = mock_scraper
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            Path("test.db").touch()
+            predictions_dir = Path("docs/predictions")
+            predictions_dir.mkdir(parents=True)
+            (predictions_dir / "2026-01-24-nakayama.md").write_text(
+                "# Test", encoding="utf-8"
+            )
+
+            result = runner.invoke(
+                main,
+                [
+                    "review-day",
+                    "--date",
+                    "2026-01-24",
+                    "--venue",
+                    "中山",
+                    "--db",
+                    "test.db",
+                ],
+            )
+
+        # 出力確認：skippedレースが除外されたことを表示
+        assert "1R: 新馬戦のため検証対象外" in result.output
+        assert "3R: 新馬戦のため検証対象外" in result.output
+
+        # scraperは skipped=False のレースのみ呼ばれる
+        assert mock_scraper.fetch_payouts.call_count == 1
+
+    @patch("keiba.cli.commands.review.append_review_to_markdown")
+    @patch("keiba.cli.commands.review.calculate_sanrenpuku_simulation")
+    @patch("keiba.cli.commands.review.calculate_umaren_simulation")
+    @patch("keiba.cli.commands.review.calculate_tansho_simulation")
+    @patch("keiba.cli.commands.review.calculate_fukusho_simulation")
+    @patch("keiba.cli.commands.review.parse_predictions_markdown")
+    @patch("keiba.cli.commands.review.RaceDetailScraper")
+    def test_all_races_skipped_shows_no_races_message(
+        self,
+        mock_scraper_class,
+        mock_parse,
+        mock_fukusho,
+        mock_tansho,
+        mock_umaren,
+        mock_sanrenpuku,
+        mock_append,
+        tmp_path,
+    ):
+        """全レースがskipped=Trueの場合は対象レースなしのメッセージを表示"""
+        mock_parse.return_value = {
+            "races": [
+                {
+                    "race_number": 1,
+                    "race_id": "202601010101",
+                    "race_name": "2歳新馬",
+                    "skipped": True,
+                    "predictions": [],
+                },
+                {
+                    "race_number": 2,
+                    "race_id": "202601010102",
+                    "race_name": "新馬",
+                    "skipped": True,
+                    "predictions": [],
+                },
+            ]
+        }
+
+        mock_scraper = MagicMock()
+        mock_scraper_class.return_value = mock_scraper
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            Path("test.db").touch()
+            predictions_dir = Path("docs/predictions")
+            predictions_dir.mkdir(parents=True)
+            (predictions_dir / "2026-01-24-nakayama.md").write_text(
+                "# Test", encoding="utf-8"
+            )
+
+            result = runner.invoke(
+                main,
+                [
+                    "review-day",
+                    "--date",
+                    "2026-01-24",
+                    "--venue",
+                    "中山",
+                    "--db",
+                    "test.db",
+                ],
+            )
+
+        # 全レースがskippedの場合のメッセージ
+        assert "1R: 新馬戦のため検証対象外" in result.output
+        assert "2R: 新馬戦のため検証対象外" in result.output
+
+        # scraperは呼ばれない
+        mock_scraper.fetch_payouts.assert_not_called()

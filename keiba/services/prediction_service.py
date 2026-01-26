@@ -4,6 +4,7 @@ import math
 from dataclasses import dataclass
 from typing import Protocol
 
+from keiba.utils.grade_extractor import extract_grade
 from keiba.analyzers.factors import (
     PastResultsFactor,
     CourseFitFactor,
@@ -14,6 +15,7 @@ from keiba.analyzers.factors import (
     RunningStyleFactor,
 )
 from keiba.analyzers.score_calculator import ScoreCalculator
+from keiba.config.weights import ML_WEIGHT_ALPHA
 from keiba.models.entry import ShutubaData, RaceEntry
 
 
@@ -106,7 +108,12 @@ class PredictionService:
 
         Returns:
             予測結果リスト（ML確率降順でソート）
+            新馬戦の場合は空リストを返す
         """
+        # 新馬戦の場合は予測をスキップ
+        if self.is_debut_race(shutuba_data.race_name):
+            return []
+
         race_date = shutuba_data.date
         race_info = {
             "course": shutuba_data.course,
@@ -336,7 +343,10 @@ class PredictionService:
         max_ml_probability: float,
         total_score: float | None,
     ) -> float | None:
-        """複合スコアを幾何平均で計算
+        """複合スコアを加重平均で計算
+
+        計算式: alpha * 正規化ML確率 + (1 - alpha) * 総合スコア
+        alpha = 0.6 でML確率を60%、総合スコアを40%の重みで合成
 
         Args:
             ml_probability: 対象馬のML確率
@@ -350,7 +360,10 @@ class PredictionService:
             return None
 
         normalized_ml = (ml_probability / max_ml_probability) * 100
-        combined = math.sqrt(normalized_ml * total_score)
+        combined = (
+            ML_WEIGHT_ALPHA * normalized_ml
+            + (1 - ML_WEIGHT_ALPHA) * total_score
+        )
         return round(combined, 1)
 
     def _calculate_past_stats(
@@ -399,3 +412,15 @@ class PredictionService:
             "avg_finish_position": avg_finish,
             "days_since_last_race": None,  # 計算には追加の日付処理が必要
         }
+
+    @staticmethod
+    def is_debut_race(race_name: str) -> bool:
+        """新馬戦かどうかを判定する
+
+        Args:
+            race_name: レース名
+
+        Returns:
+            新馬戦の場合True、それ以外はFalse
+        """
+        return extract_grade(race_name) == "DEBUT"

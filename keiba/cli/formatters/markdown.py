@@ -66,6 +66,9 @@ def save_predictions_markdown(
         lines.append(f"## {race_number}R {race_name}")
         if race_id:
             lines.append(f"race_id: {race_id}")
+        # skipped フラグがある場合は出力
+        if race_data.get("skipped", False):
+            lines.append("skipped: true")
         if surface and distance:
             lines.append(f"{surface}{distance}m")
         lines.append("")
@@ -160,6 +163,7 @@ def parse_predictions_markdown(filepath: str) -> dict:
                 "race_number": race_number,
                 "race_name": race_name,
                 "predictions": [],
+                "skipped": False,
             }
             in_table = False
             header_skipped = False
@@ -169,6 +173,11 @@ def parse_predictions_markdown(filepath: str) -> dict:
             race_id_match = re.match(r"race_id:\s*(\d+)", line)
             if race_id_match:
                 current_race["race_id"] = race_id_match.group(1)
+
+        # skipped行を検出（skipped: true）
+        elif line.startswith("skipped:") and current_race is not None:
+            if "true" in line.lower():
+                current_race["skipped"] = True
 
         # テーブル開始検出
         elif line.startswith("|") and "順位" in line:

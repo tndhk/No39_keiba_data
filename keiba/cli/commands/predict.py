@@ -253,6 +253,20 @@ def predict_day(date_str: str | None, venue: str, db: str, no_ml: bool):
                 # 予測を実行
                 predictions = service.predict_from_shutuba(shutuba_data)
 
+                # 新馬戦の場合（空リスト）はスキップ
+                if not predictions:
+                    click.echo(f"  {shutuba_data.race_number}R: 新馬戦のため予測対象外")
+                    predictions_data.append({
+                        "race_id": race_id,
+                        "race_number": shutuba_data.race_number,
+                        "race_name": shutuba_data.race_name,
+                        "surface": shutuba_data.surface,
+                        "distance": shutuba_data.distance,
+                        "predictions": [],
+                        "skipped": True,
+                    })
+                    continue
+
                 # 予測データを収集
                 race_predictions = {
                     "race_id": race_id,
@@ -271,6 +285,7 @@ def predict_day(date_str: str | None, venue: str, db: str, no_ml: bool):
                         }
                         for p in predictions
                     ],
+                    "skipped": False,
                 }
                 predictions_data.append(race_predictions)
 

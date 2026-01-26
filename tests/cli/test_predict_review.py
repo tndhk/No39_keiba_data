@@ -847,3 +847,113 @@ class TestSimulationCalculation:
         assert result["top1"]["hits"] == 1
         assert result["top3"]["hits"] == 3
         assert result["top3"]["payout"] == 150 + 280 + 320
+
+
+class TestSkippedRacesHandling:
+    """新馬戦（skipped=True）のハンドリングテスト"""
+
+    def test_save_markdown_includes_skipped_flag(self, tmp_path):
+        """skipped=TrueのレースがMarkdownに正しく保存される"""
+        predictions_data = [
+            {
+                "race_id": "202601010101",
+                "race_number": 1,
+                "race_name": "2歳新馬",
+                "surface": "芝",
+                "distance": 1600,
+                "predictions": [],
+                "skipped": True,
+            },
+            {
+                "race_id": "202601010102",
+                "race_number": 2,
+                "race_name": "未勝利",
+                "surface": "芝",
+                "distance": 2000,
+                "predictions": [
+                    {
+                        "rank": 1,
+                        "horse_number": 5,
+                        "horse_name": "テストホース",
+                        "ml_probability": 0.65,
+                        "total_score": 75.5,
+                    }
+                ],
+                "skipped": False,
+            },
+        ]
+
+        output_dir = tmp_path / "predictions"
+        output_dir.mkdir(parents=True)
+
+        filepath = save_predictions_markdown(
+            predictions_data,
+            date_str="2026-01-24",
+            venue="中山",
+            output_dir=str(output_dir),
+        )
+
+        content = Path(filepath).read_text(encoding="utf-8")
+
+        # skipped: true が保存されていることを確認
+        assert "skipped: true" in content
+
+    def test_parse_markdown_reads_skipped_flag(self, tmp_path):
+        """Markdownからskippedフラグが正しく読み取れる"""
+        markdown_content = """# 2026-01-24 中山 予測結果
+
+生成日時: 2026-01-24 10:00:00
+
+## 1R 2歳新馬
+race_id: 202601010101
+skipped: true
+芝1600m
+
+新馬戦のため予測対象外
+
+## 2R 未勝利
+race_id: 202601010102
+芝2000m
+
+| 順位 | 馬番 | 馬名 | ML確率 | 複合 | 総合 |
+|:---:|:---:|:---|:---:|:---:|:---:|
+| 1 | 5 | テストホース | 65.0% | - | 75.5 |
+
+"""
+        filepath = tmp_path / "test.md"
+        filepath.write_text(markdown_content, encoding="utf-8")
+
+        parsed = parse_predictions_markdown(str(filepath))
+
+        assert len(parsed["races"]) == 2
+
+        # 1R: skipped=True
+        assert parsed["races"][0]["race_number"] == 1
+        assert parsed["races"][0]["skipped"] is True
+        assert parsed["races"][0]["predictions"] == []
+
+        # 2R: skipped=False（デフォルト）
+        assert parsed["races"][1]["race_number"] == 2
+        assert parsed["races"][1].get("skipped", False) is False
+        assert len(parsed["races"][1]["predictions"]) == 1
+
+    def test_parse_markdown_default_skipped_is_false(self, tmp_path):
+        """skippedフラグがない場合はFalseがデフォルト"""
+        markdown_content = """# 2026-01-24 中山 予測結果
+
+## 1R テストレース
+race_id: 202601010101
+芝1600m
+
+| 順位 | 馬番 | 馬名 | ML確率 | 複合 | 総合 |
+|:---:|:---:|:---|:---:|:---:|:---:|
+| 1 | 5 | テストホース | 65.0% | - | 75.5 |
+
+"""
+        filepath = tmp_path / "test.md"
+        filepath.write_text(markdown_content, encoding="utf-8")
+
+        parsed = parse_predictions_markdown(str(filepath))
+
+        assert len(parsed["races"]) == 1
+        assert parsed["races"][0].get("skipped", False) is False

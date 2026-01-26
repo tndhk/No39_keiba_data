@@ -79,6 +79,11 @@ def review_day(date_str: str | None, venue: str, db: str):
         race_number = race["race_number"]
         race_id = race.get("race_id", "")
 
+        # 新馬戦（skipped=True）は検証対象外
+        if race.get("skipped", False):
+            click.echo(f"{race_number}R: 新馬戦のため検証対象外")
+            continue
+
         # race_idが予測ファイルに保存されていない場合はスキップ
         if not race_id:
             click.echo(f"{race_number}R: race_idが予測ファイルに含まれていません。スキップします。")
@@ -123,19 +128,27 @@ def review_day(date_str: str | None, venue: str, db: str):
 
     click.echo("")
 
-    # シミュレーションを計算
-    review_data = calculate_fukusho_simulation(predictions, actual_results, payouts)
+    # skipped レースを除外した predictions を作成
+    filtered_predictions = {
+        "races": [
+            race for race in predictions["races"]
+            if not race.get("skipped", False)
+        ]
+    }
+
+    # シミュレーションを計算（skipped レースを除外）
+    review_data = calculate_fukusho_simulation(filtered_predictions, actual_results, payouts)
 
     # 馬連シミュレーション
-    umaren_data = calculate_umaren_simulation(predictions, umaren_payouts)
+    umaren_data = calculate_umaren_simulation(filtered_predictions, umaren_payouts)
     review_data["umaren"] = umaren_data
 
     # 3連複シミュレーション
-    sanrenpuku_data = calculate_sanrenpuku_simulation(predictions, sanrenpuku_payouts)
+    sanrenpuku_data = calculate_sanrenpuku_simulation(filtered_predictions, sanrenpuku_payouts)
     review_data["sanrenpuku"] = sanrenpuku_data
 
     # 単勝シミュレーション
-    tansho_data = calculate_tansho_simulation(predictions, tansho_payouts)
+    tansho_data = calculate_tansho_simulation(filtered_predictions, tansho_payouts)
     review_data["tansho"] = tansho_data
 
     # 検証結果をMarkdownに追記

@@ -641,10 +641,15 @@ class TestWeightsConfig:
         for factor in required_factors:
             assert factor in FACTOR_WEIGHTS
 
-    def test_weights_are_equal(self):
-        """7因子が均等に配分されている"""
+    def test_weights_are_importance_based(self):
+        """7因子が測定された重要度に基づいて配分されている"""
         from keiba.config.weights import FACTOR_WEIGHTS
 
-        expected_weight = round(1.0 / 7, 3)
-        for weight in FACTOR_WEIGHTS.values():
-            assert abs(weight - expected_weight) < 0.01
+        # 各ウェイトは0より大きく1未満
+        for factor, weight in FACTOR_WEIGHTS.items():
+            assert 0 < weight < 1, f"{factor}のウェイトが不正: {weight}"
+
+        # past_resultsが最も高いウェイトを持つ（測定結果に基づく）
+        assert FACTOR_WEIGHTS["past_results"] >= max(
+            v for k, v in FACTOR_WEIGHTS.items() if k != "past_results"
+        )
