@@ -65,7 +65,13 @@ from keiba.cli.commands.analyze import analyze
 from keiba.cli.commands.predict import predict, predict_day
 from keiba.cli.commands.train import train
 from keiba.cli.commands.review import review_day
-from keiba.cli.commands.backtest import backtest, backtest_fukusho
+from keiba.cli.commands.backtest import (
+    backtest,
+    backtest_fukusho,
+    backtest_tansho,
+    backtest_umaren,
+    backtest_sanrenpuku,
+)
 from keiba.cli.commands.migrate import migrate_grades
 
 main.add_command(scrape)
@@ -77,6 +83,9 @@ main.add_command(train)
 main.add_command(review_day)
 main.add_command(backtest)
 main.add_command(backtest_fukusho)
+main.add_command(backtest_tansho)
+main.add_command(backtest_umaren)
+main.add_command(backtest_sanrenpuku)
 main.add_command(migrate_grades)
 
 
