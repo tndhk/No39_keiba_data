@@ -98,6 +98,7 @@ keiba backtest-fukusho --db data/keiba.db -v
 | review-day | 予測検証（複勝・単勝シミュレーション） | --date, --venue, --db |
 | backtest | 期間バックテスト | --db, --from, --to, --months, --retrain-interval |
 | backtest-fukusho | 複勝シミュレーション | --db, --from, --to, --last-week, --top-n, --venue |
+| backtest-all | 全券種一括バックテスト | --db, --from, --to, --last-week, --top-n, --venue, -v |
 
 ### コマンド依存関係
 
@@ -122,9 +123,13 @@ keiba review-day --venue 中山 --date YYYY-MM-DD --db data/keiba.db
 ### 週次ワークフロー
 
 ```bash
-# 先週のパフォーマンス評価
+# 先週の全券種パフォーマンス評価（推奨）
+keiba backtest-all --last-week --db data/keiba.db
+# → 複勝・単勝・馬連・三連複の的中率・回収率を一覧比較
+
+# 複勝のみの詳細評価
 keiba backtest-fukusho --last-week --top-n 3 --db data/keiba.db -v
-# → 的中率・回収率を確認
+# → 複勝の的中率・回収率を確認
 ```
 
 ### 月次ワークフロー
@@ -147,7 +152,7 @@ keiba train --db data/keiba.db --output data/models/model_202601.joblib
 | 初回 | 初期セットアップ | scrape（複数月）, scrape-horses, train |
 | 日次 | 当日予測 | predict-day |
 | 翌日 | 結果検証 | review-day |
-| 週次 | パフォーマンス評価 | backtest-fukusho --last-week |
+| 週次 | パフォーマンス評価 | backtest-all --last-week |
 | 月次 | データ更新・再学習 | scrape, scrape-horses, train |
 | 随時 | 過去分析 | analyze |
 | 随時 | 単一レース予測 | predict |

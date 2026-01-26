@@ -71,6 +71,7 @@ from keiba.cli.commands.backtest import (
     backtest_tansho,
     backtest_umaren,
     backtest_sanrenpuku,
+    backtest_all,
 )
 from keiba.cli.commands.migrate import migrate_grades
 
@@ -86,6 +87,7 @@ main.add_command(backtest_fukusho)
 main.add_command(backtest_tansho)
 main.add_command(backtest_umaren)
 main.add_command(backtest_sanrenpuku)
+main.add_command(backtest_all)
 main.add_command(migrate_grades)
 
 

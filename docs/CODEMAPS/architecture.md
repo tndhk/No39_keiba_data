@@ -1,6 +1,6 @@
 # Architecture Codemap
 
-> Freshness: 2026-01-26 (Verified: CLI package refactoring, Services, Repositories)
+> Freshness: 2026-01-27 (Verified: backtest-all command, 4 simulators added)
 
 ## System Overview
 
@@ -15,7 +15,7 @@ keiba/                        # 競馬データ収集・分析CLI
 |   |   +-- predict.py        # predict, predict-day (321行)
 |   |   +-- train.py          # train (78行)
 |   |   +-- review.py         # review-day (193行)
-|   |   +-- backtest.py       # backtest, backtest-fukusho (164行)
+|   |   +-- backtest.py       # backtest, backtest-fukusho/tansho/umaren/sanrenpuku/all (671行)
 |   |   +-- migrate.py        # migrate-grades (50行)
 |   +-- formatters/           # 出力フォーマッタ
 |   |   +-- __init__.py       # exports (14行)
@@ -67,6 +67,9 @@ keiba/                        # 競馬データ収集・分析CLI
 +-- backtest/                 # バックテストモジュール
 |   +-- backtester.py         # BacktestEngine（ウォークフォワード検証） (1093行)
 |   +-- fukusho_simulator.py  # FukushoSimulator（複勝シミュレーション） (367行)
+|   +-- tansho_simulator.py   # TanshoSimulator（単勝シミュレーション） (291行)
+|   +-- umaren_simulator.py   # UmarenSimulator（馬連シミュレーション） (316行)
+|   +-- sanrenpuku_simulator.py # SanrenpukuSimulator（三連複シミュレーション） (290行)
 |   +-- metrics.py            # MetricsCalculator（精度評価指標） (198行)
 |   +-- reporter.py           # BacktestReporter（結果出力） (168行)
 |   +-- factor_calculator.py  # ファクター計算 (249行)
@@ -105,7 +108,7 @@ cli/__init__.py (main)
 |   +-- formatters/simulation.py
 |   +-- scrapers/race_detail.py (fetch_payouts)
 +-- commands/backtest.py
-|   +-- backtest/ (BacktestEngine, FukushoSimulator)
+|   +-- backtest/ (BacktestEngine, Fukusho/Tansho/Umaren/SanrenpukuSimulator)
 +-- commands/migrate.py
     +-- utils/grade_extractor.py
 
@@ -171,6 +174,18 @@ backtest/fukusho_simulator.py
 +-- models/entry.py (RaceEntry, ShutubaData)
 +-- scrapers/race_detail.py (RaceDetailScraper.fetch_payouts)
 +-- services/prediction_service.py (PredictionService)
+
+backtest/tansho_simulator.py
++-- fukusho_simulator.py (_BacktestRaceResultRepository)
++-- scrapers/race_detail.py (RaceDetailScraper.fetch_tansho_payout)
+
+backtest/umaren_simulator.py
++-- fukusho_simulator.py (_BacktestRaceResultRepository)
++-- scrapers/race_detail.py (RaceDetailScraper.fetch_umaren_payout)
+
+backtest/sanrenpuku_simulator.py
++-- fukusho_simulator.py (_BacktestRaceResultRepository)
++-- scrapers/race_detail.py (RaceDetailScraper.fetch_sanrenpuku_payout)
 ```
 
 ## Data Flow
@@ -280,6 +295,10 @@ backtest/fukusho_simulator.py
 | `migrate-grades` | `commands/migrate.py:migrate_grades()` | グレード情報マイグレーション |
 | `backtest` | `commands/backtest.py:backtest()` | ML予測のバックテスト検証 |
 | `backtest-fukusho` | `commands/backtest.py:backtest_fukusho()` | 複勝馬券バックテストシミュレーション |
+| `backtest-tansho` | `commands/backtest.py:backtest_tansho()` | 単勝馬券バックテストシミュレーション |
+| `backtest-umaren` | `commands/backtest.py:backtest_umaren()` | 馬連馬券バックテストシミュレーション |
+| `backtest-sanrenpuku` | `commands/backtest.py:backtest_sanrenpuku()` | 三連複馬券バックテストシミュレーション |
+| `backtest-all` | `commands/backtest.py:backtest_all()` | 全券種一括バックテストシミュレーション |
 | `train` | `commands/train.py:train()` | MLモデル学習・保存 |
 
 ## External Dependencies
@@ -343,6 +362,7 @@ tests/
     +-- test_cache.py                # キャッシュテスト
     +-- test_cache_strategy.py       # キャッシュ戦略テスト
     +-- test_cached_factor_calculator.py  # キャッシュ付きファクター計算テスト
++-- cli/test_backtest_all.py         # backtest-allコマンドテスト
 ```
 
 ## CLI Backward Compatibility

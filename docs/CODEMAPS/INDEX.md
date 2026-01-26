@@ -1,6 +1,6 @@
 # Codemaps Index
 
-> Freshness: 2026-01-26 (CLI package refactoring verified)
+> Freshness: 2026-01-27 (backtest-all command added, 4 simulators verified)
 
 競馬データ収集システムのコードマップ一覧。
 
@@ -14,6 +14,7 @@
 |----------|------|---------------|
 | [architecture.md](./architecture.md) | システム全体構造 | keiba/, tests/ |
 | [backend.md](./backend.md) | CLI/Services/Scrapers | keiba/cli/, keiba/services/, keiba/scrapers/ |
+| [backtest.md](./backtest.md) | バックテストモジュール | keiba/backtest/, 4券種シミュレータ |
 | [data.md](./data.md) | データモデル/DB構造 | keiba/models/, DB Schema |
 
 ## システム構成図
@@ -28,7 +29,7 @@ keiba/                           # 競馬データ収集・分析CLI
 |   |   +-- predict.py           # predict, predict-day (321行)
 |   |   +-- train.py             # train (78行)
 |   |   +-- review.py            # review-day (193行)
-|   |   +-- backtest.py          # backtest, backtest-fukusho (164行)
+|   |   +-- backtest.py          # backtest, backtest-fukusho/tansho/umaren/sanrenpuku/all (671行)
 |   |   +-- migrate.py           # migrate-grades (50行)
 |   +-- formatters/              # 出力フォーマッタ
 |   |   +-- markdown.py          # Markdown保存/パース (325行)
@@ -75,6 +76,9 @@ keiba/                           # 競馬データ収集・分析CLI
 +-- backtest/                    # バックテスト
 |   +-- backtester.py            # ウォークフォワード検証 (1093行)
 |   +-- fukusho_simulator.py     # 複勝シミュレーション (367行)
+|   +-- tansho_simulator.py      # 単勝シミュレーション (291行)
+|   +-- umaren_simulator.py      # 馬連シミュレーション (316行)
+|   +-- sanrenpuku_simulator.py  # 三連複シミュレーション (290行)
 |   +-- metrics.py               # 精度評価 (198行)
 |   +-- reporter.py              # レポート出力 (168行)
 |   +-- factor_calculator.py     # ファクター計算 (249行)
@@ -107,6 +111,10 @@ keiba/                           # 競馬データ収集・分析CLI
 | train | commands/train.py | MLモデル学習 |
 | backtest | commands/backtest.py | ML予測バックテスト |
 | backtest-fukusho | commands/backtest.py | 複勝シミュレーション |
+| backtest-tansho | commands/backtest.py | 単勝シミュレーション |
+| backtest-umaren | commands/backtest.py | 馬連シミュレーション |
+| backtest-sanrenpuku | commands/backtest.py | 三連複シミュレーション |
+| backtest-all | commands/backtest.py | 全券種一括バックテスト |
 | migrate-grades | commands/migrate.py | グレード情報マイグレーション |
 
 ## パッケージ依存関係

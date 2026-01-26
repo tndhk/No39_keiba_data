@@ -1,6 +1,6 @@
 # Backend Codemap
 
-> Freshness: 2026-01-26 (Verified: CLI package refactoring, Services, Repositories)
+> Freshness: 2026-01-27 (Verified: backtest-all command, 4 simulators added)
 
 ## Overview
 
@@ -20,7 +20,7 @@ keiba/cli/                       # 1748行合計
 |   +-- predict.py               # predict, predict-day (321行)
 |   +-- train.py                 # train (78行)
 |   +-- review.py                # review-day (193行)
-|   +-- backtest.py              # backtest, backtest-fukusho (164行)
+|   +-- backtest.py              # backtest, backtest-fukusho/tansho/umaren/sanrenpuku/all (671行)
 |   +-- migrate.py               # migrate-grades (50行)
 +-- formatters/                  # 出力フォーマッタ (677行)
 |   +-- __init__.py              # exports (14行)
@@ -51,6 +51,10 @@ main.add_command(train)           # from commands/train.py
 main.add_command(review_day)      # from commands/review.py
 main.add_command(backtest)        # from commands/backtest.py
 main.add_command(backtest_fukusho)# from commands/backtest.py
+main.add_command(backtest_tansho) # from commands/backtest.py
+main.add_command(backtest_umaren) # from commands/backtest.py
+main.add_command(backtest_sanrenpuku) # from commands/backtest.py
+main.add_command(backtest_all)    # from commands/backtest.py
 main.add_command(migrate_grades)  # from commands/migrate.py
 ```
 
@@ -65,8 +69,12 @@ main.add_command(migrate_grades)  # from commands/migrate.py
 | predict-day | commands/predict.py | - | 指定日・競馬場の全レース予測 |
 | review-day | commands/review.py | 193 | 予測結果と実績比較（複勝・単勝・馬連・三連複シミュレーション） |
 | migrate-grades | commands/migrate.py | 50 | グレード情報マイグレーション |
-| backtest | commands/backtest.py | 164 | ML予測バックテスト |
+| backtest | commands/backtest.py | 671 | ML予測バックテスト |
 | backtest-fukusho | commands/backtest.py | - | 複勝シミュレーション |
+| backtest-tansho | commands/backtest.py | - | 単勝シミュレーション |
+| backtest-umaren | commands/backtest.py | - | 馬連シミュレーション |
+| backtest-sanrenpuku | commands/backtest.py | - | 三連複シミュレーション |
+| backtest-all | commands/backtest.py | - | 全券種一括シミュレーション |
 | train | commands/train.py | 78 | MLモデル学習・保存 |
 
 ### Formatters (keiba/cli/formatters/)
@@ -379,39 +387,32 @@ def find_latest_model(model_dir: str) -> str | None:
 
 ## Backtest Layer (keiba/backtest/)
 
-### Structure (2200行)
+### Structure (2500行+)
 
 ```
 keiba/backtest/
 +-- __init__.py
-+-- backtester.py        # BacktestEngine (1093行)
-+-- fukusho_simulator.py # FukushoSimulator (367行)
-+-- metrics.py           # MetricsCalculator (198行)
-+-- reporter.py          # BacktestReporter (168行)
-+-- factor_calculator.py # ファクター計算 (249行)
-+-- cache.py             # キャッシュ機構 (125行)
++-- backtester.py           # BacktestEngine (1093行)
++-- fukusho_simulator.py    # FukushoSimulator (367行)
++-- tansho_simulator.py     # TanshoSimulator (291行)
++-- umaren_simulator.py     # UmarenSimulator (316行)
++-- sanrenpuku_simulator.py # SanrenpukuSimulator (290行)
++-- metrics.py              # MetricsCalculator (198行)
++-- reporter.py             # BacktestReporter (168行)
++-- factor_calculator.py    # ファクター計算 (249行)
++-- cache.py                # キャッシュ機構 (125行)
 ```
 
-### FukushoSimulator (367行)
+詳細は [backtest.md](./backtest.md) を参照。
 
-```python
-class FukushoSimulator:
-    """複勝馬券シミュレータ"""
+### Simulators Overview
 
-    def __init__(self, db_path: str): ...
-
-    def simulate_race(self, race_id: str, top_n: int = 3) -> FukushoRaceResult:
-        """1レースのシミュレーション"""
-
-    def simulate_period(
-        self,
-        from_date: str,
-        to_date: str,
-        venues: list[str] | None = None,
-        top_n: int = 3,
-    ) -> FukushoSummary:
-        """期間シミュレーション"""
-```
+| Simulator | 券種 | 購入点数 | 的中条件 |
+|-----------|------|----------|---------|
+| FukushoSimulator | 複勝 | top_n点 | Top-Nのいずれかが3着以内 |
+| TanshoSimulator | 単勝 | top_n点 | Top-Nのいずれかが1着 |
+| UmarenSimulator | 馬連 | 3点 | Top3の2頭が1-2着 |
+| SanrenpukuSimulator | 三連複 | 1点 | Top3の3頭が3着以内 |
 
 ### BacktestEngine (1093行)
 
@@ -519,12 +520,12 @@ FACTOR_WEIGHTS = {
 
 | Category | Total Lines | Files |
 |----------|-------------|-------|
-| CLI Package | 2695 | 14 |
+| CLI Package | 3200 | 14 |
 | Services | 844 | 4 |
 | Repositories | 80 | 2 |
 | Scrapers | 1702 | 6 |
 | ML | 362+ | 4 |
-| Backtest | 2200 | 6 |
+| Backtest | 3100 | 10 |
 | Analyzers | 591 | 8 |
 | Models | 450+ | 8 |
 | Config | 127+ | 2 |

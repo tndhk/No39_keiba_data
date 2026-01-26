@@ -1,6 +1,6 @@
 # Data Models Codemap
 
-> Freshness: 2026-01-26 (Verified: CLI refactoring, simulation types, payout methods)
+> Freshness: 2026-01-27 (Verified: 4 simulators added, backtest-all command)
 
 ## Database Schema (SQLite)
 
@@ -505,20 +505,46 @@ VENUE_CODE_MAP = {
 +--+--------- 年 (西暦4桁)
 ```
 
-## FukushoSimulator Data Structures
+## Simulator Data Structures
 
-### FukushoRaceResult
+詳細は [backtest.md](./backtest.md) を参照。
+
+### Summary of Simulator Types
+
+| Simulator | RaceResult Type | Summary Type |
+|-----------|-----------------|--------------|
+| FukushoSimulator | FukushoRaceResult | FukushoSummary |
+| TanshoSimulator | TanshoRaceResult | TanshoSummary |
+| UmarenSimulator | UmarenRaceResult | UmarenSummary |
+| SanrenpukuSimulator | SanrenpukuRaceResult | SanrenpukuSummary |
+
+### Common Summary Fields
+
+全Summaryクラスに共通するフィールド:
 
 ```python
-# keiba/backtest/fukusho_simulator.py
+@dataclass(frozen=True)
+class *Summary:
+    period_from: str           # 期間開始日 (YYYY-MM-DD)
+    period_to: str             # 期間終了日 (YYYY-MM-DD)
+    total_races: int           # 総レース数
+    total_hits: int            # 総的中数
+    hit_rate: float            # 的中率 (0.0-1.0)
+    total_investment: int      # 総投資額
+    total_payout: int          # 総払戻額
+    return_rate: float         # 回収率 (払戻/投資)
+    race_results: tuple[*RaceResult, ...]  # レース別結果
+```
 
+### FukushoRaceResult (複勝)
+
+```python
 @dataclass(frozen=True)
 class FukushoRaceResult:
-    """1レースの複勝シミュレーション結果"""
-    race_id: str                     # レースID
-    race_name: str                   # レース名
-    venue: str                       # 開催場所
-    race_date: str                   # 開催日 (YYYY-MM-DD)
+    race_id: str
+    race_name: str
+    venue: str
+    race_date: str
     top_n_predictions: tuple[int, ...]  # 予測top-n馬番
     fukusho_horses: tuple[int, ...]     # 複勝対象馬番（3着以内）
     hits: tuple[int, ...]               # 的中した馬番
@@ -527,53 +553,52 @@ class FukushoRaceResult:
     payout_total: int                   # 払戻総額
 ```
 
-### FukushoSummary
+### TanshoRaceResult (単勝)
 
 ```python
-# keiba/backtest/fukusho_simulator.py
-
 @dataclass(frozen=True)
-class FukushoSummary:
-    """期間シミュレーションのサマリー"""
-    period_from: str                 # 期間開始日 (YYYY-MM-DD)
-    period_to: str                   # 期間終了日 (YYYY-MM-DD)
-    total_races: int                 # 総レース数
-    total_bets: int                  # 総ベット数
-    total_hits: int                  # 総的中数
-    hit_rate: float                  # 的中率 (0.0-1.0)
-    total_investment: int            # 総投資額
-    total_payout: int                # 総払戻額
-    return_rate: float               # 回収率 (払戻/投資)
-    race_results: tuple[FukushoRaceResult, ...]  # レース別結果
+class TanshoRaceResult:
+    race_id: str
+    race_name: str
+    venue: str
+    race_date: str
+    top_n_predictions: tuple[int, ...]  # 予測top-n馬番
+    winning_horse: int | None           # 1着馬の馬番
+    hit: bool                           # 的中したかどうか
+    payout: int                         # 払戻額（外れは0）
+    investment: int                     # 投資額（100 * top_n）
 ```
 
-### FukushoSimulator Class
+### UmarenRaceResult (馬連)
 
 ```python
-# keiba/backtest/fukusho_simulator.py
+@dataclass(frozen=True)
+class UmarenRaceResult:
+    race_id: str
+    race_name: str
+    venue: str
+    race_date: str
+    bet_combinations: tuple[tuple[int, int], ...]  # 購入組み合わせ（3点）
+    actual_pair: tuple[int, int] | None            # 実際の1-2着
+    hit: bool
+    payout: int
+    investment: int                                # 300円固定（3点x100円）
+```
 
-class FukushoSimulator:
-    """複勝馬券シミュレータ
+### SanrenpukuRaceResult (三連複)
 
-    予測モデルの出力を使用して、複勝馬券の購入戦略をシミュレートする。
-    PredictionServiceを使用して7因子スコアとML予測を組み合わせて予測。
-    """
-
-    def __init__(self, db_path: str) -> None: ...
-
-    def simulate_race(self, race_id: str, top_n: int = 3) -> FukushoRaceResult:
-        """1レースの複勝シミュレーション"""
-        ...
-
-    def simulate_period(
-        self,
-        from_date: str,
-        to_date: str,
-        venues: list[str] | None = None,
-        top_n: int = 3,
-    ) -> FukushoSummary:
-        """期間シミュレーションを実行"""
-        ...
+```python
+@dataclass(frozen=True)
+class SanrenpukuRaceResult:
+    race_id: str
+    race_name: str
+    venue: str
+    race_date: str
+    predicted_trio: tuple[int, int, int]       # 予測Top3馬番（昇順）
+    actual_trio: tuple[int, int, int] | None   # 実際の3着以内（昇順）
+    hit: bool
+    payout: int
+    investment: int                            # 100円固定（1点買い）
 ```
 
 ## Model Storage
