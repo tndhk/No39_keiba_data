@@ -9,6 +9,11 @@ from keiba.backtest.fukusho_simulator import (
     FukushoSimulator,
     FukushoSummary,
 )
+from keiba.backtest.umaren_simulator import (
+    UmarenRaceResult,
+    UmarenSimulator,
+    UmarenSummary,
+)
 from keiba.backtest.metrics import (
     MetricsCalculator,
     PredictionResult,
@@ -26,4 +31,7 @@ __all__ = [
     "FukushoRaceResult",
     "FukushoSimulator",
     "FukushoSummary",
+    "UmarenRaceResult",
+    "UmarenSimulator",
+    "UmarenSummary",
 ]
