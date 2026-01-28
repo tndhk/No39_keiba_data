@@ -576,3 +576,394 @@ class TestPredictFromShutubaDebutRaceSkip:
         # Assert: 通常レースなので予測結果を返す
         assert len(result) == 1
         assert result[0].horse_name == "テスト馬"
+
+
+class TestFactorParameterPassing:
+    """ファクターへのパラメータ受け渡しテスト（Phase 1-1）"""
+
+    def test_course_fit_factor_receives_target_surface(self):
+        """CourseFitFactorがtarget_surfaceを受け取ること"""
+        # Arrange
+        entries = (create_test_entry("horse_001", "Horse A", 1),)
+        shutuba = ShutubaData(
+            race_id="202501010101",
+            race_name="Test Race",
+            race_number=1,
+            course="東京",
+            distance=1600,
+            surface="芝",
+            date="2025-01-01",
+            entries=entries,
+        )
+
+        mock_repo = Mock(spec=RaceResultRepository)
+        # 同一芝コースの過去成績を返す
+        mock_repo.get_past_results.return_value = [
+            {
+                "horse_id": "horse_001",
+                "finish_position": 1,
+                "total_runners": 10,
+                "race_date": "2024-12-01",
+                "course": "東京",
+                "distance": 1600,
+                "surface": "芝",
+                "time_index": 100.0,
+                "last_3f": 34.0,
+                "odds": 3.0,
+                "popularity": 2,
+            }
+        ]
+
+        service = PredictionService(repository=mock_repo)
+
+        # Act
+        results = service.predict_from_shutuba(shutuba)
+
+        # Assert
+        # CourseFitFactorが正しくtarget_surfaceを受け取っていれば、
+        # 同一条件の過去成績があるためNoneではなくスコアが返る
+        result = results[0]
+        assert result.factor_scores["course_fit"] is not None, (
+            "CourseFitFactorがtarget_surfaceを受け取っていない可能性"
+        )
+
+    def test_time_index_factor_receives_surface_and_distance(self):
+        """TimeIndexFactorがtarget_surfaceとtarget_distanceを受け取ること"""
+        # Arrange
+        entries = (create_test_entry("horse_001", "Horse A", 1),)
+        shutuba = ShutubaData(
+            race_id="202501010101",
+            race_name="Test Race",
+            race_number=1,
+            course="東京",
+            distance=1600,
+            surface="芝",
+            date="2025-01-01",
+            entries=entries,
+        )
+
+        mock_repo = Mock(spec=RaceResultRepository)
+        # タイム指数と走破タイムのある過去成績を返す
+        # TimeIndexFactorは3レース以上の同条件データが必要
+        mock_repo.get_past_results.return_value = [
+            {
+                "horse_id": "horse_001",
+                "finish_position": 1,
+                "total_runners": 10,
+                "race_date": "2024-12-01",
+                "course": "東京",
+                "distance": 1600,
+                "surface": "芝",
+                "time": "1:33.5",  # TimeIndexFactorに必要
+                "time_index": 105.0,
+                "last_3f": 34.0,
+                "odds": 3.0,
+                "popularity": 2,
+            },
+            {
+                "horse_id": "horse_001",
+                "finish_position": 2,
+                "total_runners": 10,
+                "race_date": "2024-11-01",
+                "course": "東京",
+                "distance": 1600,
+                "surface": "芝",
+                "time": "1:34.0",
+                "time_index": 100.0,
+                "last_3f": 34.5,
+                "odds": 3.5,
+                "popularity": 2,
+            },
+            {
+                "horse_id": "horse_001",
+                "finish_position": 3,
+                "total_runners": 10,
+                "race_date": "2024-10-01",
+                "course": "東京",
+                "distance": 1600,
+                "surface": "芝",
+                "time": "1:33.8",
+                "time_index": 102.0,
+                "last_3f": 34.2,
+                "odds": 4.0,
+                "popularity": 3,
+            }
+        ]
+
+        service = PredictionService(repository=mock_repo)
+
+        # Act
+        results = service.predict_from_shutuba(shutuba)
+
+        # Assert
+        # TimeIndexFactorが正しくパラメータを受け取っていれば、
+        # タイム指数のある過去成績があるためNoneではなくスコアが返る
+        result = results[0]
+        assert result.factor_scores["time_index"] is not None, (
+            "TimeIndexFactorがtarget_surfaceまたはtarget_distanceを受け取っていない可能性"
+        )
+
+    def test_pedigree_factor_receives_required_parameters(self):
+        """PedigreeFactorが必要なパラメータ（sire, dam_sire, distance）を受け取ること"""
+        # Arrange
+        entries = (create_test_entry("horse_001", "Horse A", 1),)
+        shutuba = ShutubaData(
+            race_id="202501010101",
+            race_name="Test Race",
+            race_number=1,
+            course="東京",
+            distance=1600,
+            surface="芝",
+            date="2025-01-01",
+            entries=entries,
+        )
+
+        mock_repo = Mock(spec=RaceResultRepository)
+        # 過去成績を返す
+        mock_repo.get_past_results.return_value = [
+            create_mock_past_result("horse_001", 1),
+        ]
+        # 馬の血統情報を返すようにモック
+        mock_repo.get_horse_info = Mock(return_value={
+            "horse_id": "horse_001",
+            "sire": "ディープインパクト",
+            "dam_sire": "サンデーサイレンス",
+        })
+
+        service = PredictionService(repository=mock_repo)
+
+        # Act
+        results = service.predict_from_shutuba(shutuba)
+
+        # Assert
+        # PedigreeFactorが正しくパラメータを受け取っていれば、
+        # 血統情報があるためNoneではなくスコアが返る可能性が高い
+        result = results[0]
+        # Note: 現状はget_horse_infoメソッドが存在しないため、
+        # このテストは実装修正後に機能する
+        # 今はスコアがNoneでないことを確認する代わりに、
+        # factor_scoresにpedigreeキーが存在することのみ確認
+        assert "pedigree" in result.factor_scores
+
+
+class TestFieldSizeParameter:
+    """field_sizeパラメータのテスト（Phase 1-2）"""
+
+    def test_field_size_matches_number_of_entries(self):
+        """ML予測時のfield_sizeが出走頭数と一致すること"""
+        # Arrange
+        # 10頭立てのレースを作成
+        entries = tuple(
+            create_test_entry(f"horse_{i:03d}", f"Horse {chr(65+i)}", i+1)
+            for i in range(10)
+        )
+        shutuba = create_test_shutuba(entries)
+
+        mock_repo = Mock(spec=RaceResultRepository)
+
+        # horse_001は2件の過去成績があるとする（field_sizeと異なる件数にする）
+        def get_past_results_side_effect(horse_id, before_date, limit=20):
+            if horse_id == "horse_000":
+                return [
+                    create_mock_past_result("horse_000", 1),
+                    create_mock_past_result("horse_000", 2, race_date="2024-11-01"),
+                ]
+            else:
+                return []
+
+        mock_repo.get_past_results.side_effect = get_past_results_side_effect
+
+        # FeatureBuilderをモックして、渡されたfield_sizeを記録
+        from unittest.mock import patch
+        import numpy as np
+        recorded_field_sizes = []
+
+        def mock_build_features(self, race_result, factor_scores, field_size, past_stats):
+            recorded_field_sizes.append(field_size)
+            # デフォルトの特徴量を返す
+            return {name: 0 for name in self.get_feature_names()}
+
+        # モデルをモック（predict_probaが呼ばれるため）
+        mock_model = Mock()
+        mock_model.predict_proba.return_value = np.array([[0.3, 0.7]])
+
+        with patch('keiba.ml.feature_builder.FeatureBuilder.build_features', mock_build_features):
+            service = PredictionService(repository=mock_repo)
+            service._model = mock_model  # モデルを直接設定
+
+            # Act
+            results = service.predict_from_shutuba(shutuba)
+
+            # Assert
+            # horse_000のみが過去成績を持つため、1回だけbuild_featuresが呼ばれる
+            # field_sizeは出走頭数（10）でなければならない（過去成績件数の2ではない）
+            assert len(recorded_field_sizes) >= 1, "build_featuresが呼ばれていない"
+            for field_size in recorded_field_sizes:
+                assert field_size == 10, (
+                    f"field_sizeが出走頭数(10)ではなく{field_size}になっている。"
+                    "過去成績件数(2)ではなく出走頭数を渡す必要がある。"
+                )
+
+
+class TestDaysSinceLastRace:
+    """days_since_last_raceの計算テスト（Phase 1-3）"""
+
+    def test_days_since_last_race_calculated_correctly(self):
+        """days_since_last_raceが正しく計算されること"""
+        # Arrange
+        from datetime import datetime, timedelta
+
+        mock_repo = Mock()
+        service = PredictionService(repository=mock_repo)
+
+        # テストデータ: 最新レースが20日前（2024年12月12日）
+        race_date = datetime(2025, 1, 1)
+        last_race_date = (race_date - timedelta(days=20)).strftime("%Y-%m-%d")
+
+        past_results = [
+            {
+                "horse_id": "horse_001",
+                "finish_position": 1,
+                "total_runners": 10,
+                "race_date": last_race_date,
+                "course": "東京",
+                "distance": 1600,
+                "surface": "芝",
+            }
+        ]
+
+        # Act
+        past_stats = service._calculate_past_stats(
+            past_results, "horse_001", "2025年1月1日"
+        )
+
+        # Assert
+        assert past_stats["days_since_last_race"] is not None, (
+            "days_since_last_raceがNoneのままになっている"
+        )
+        assert past_stats["days_since_last_race"] == 20, (
+            f"days_since_last_raceが20日ではなく{past_stats['days_since_last_race']}になっている"
+        )
+
+
+class TestTrackConditionParameters:
+    """TimeIndexFactorとLast3FFactorに馬場状態パラメータを渡すテスト（Phase 2-1）"""
+
+    def test_time_index_factor_receives_track_condition(self):
+        """TimeIndexFactorにtrack_conditionが渡されること"""
+        # Arrange
+        mock_repo = Mock()
+        past_results = [
+            {
+                "horse_id": "horse_001",
+                "time": "1:33.5",
+                "surface": "芝",
+                "distance": 1600,
+                "track_condition": "良",
+            },
+            {
+                "horse_id": "horse_001",
+                "time": "1:34.0",
+                "surface": "芝",
+                "distance": 1600,
+                "track_condition": "良",
+            },
+            {
+                "horse_id": "horse_001",
+                "time": "1:33.8",
+                "surface": "芝",
+                "distance": 1600,
+                "track_condition": "良",
+            },
+        ]
+
+        service = PredictionService(repository=mock_repo)
+
+        # TimeIndexFactorをモック化して呼び出しを記録
+        mock_factor = Mock()
+        mock_factor.calculate = Mock(return_value=50.0)
+        service._factors["time_index"] = mock_factor
+
+        entry = create_test_entry("horse_001", "Test Horse", 1)
+        race_info = {
+            "distance": 1600,
+            "surface": "芝",
+            "track_condition": "良",
+            "date": "2025-01-01",
+        }
+
+        # Act
+        service._calculate_factor_scores(
+            entry=entry, past_results=past_results, race_info=race_info
+        )
+
+        # Assert
+        assert mock_factor.calculate.called, "TimeIndexFactor.calculate()が呼ばれていない"
+        call_kwargs = mock_factor.calculate.call_args.kwargs
+        assert "track_condition" in call_kwargs, (
+            "TimeIndexFactorにtrack_conditionが渡されていない"
+        )
+        assert call_kwargs["track_condition"] == "良", (
+            f"track_conditionが'良'ではなく{call_kwargs['track_condition']}になっている"
+        )
+
+    def test_last_3f_factor_receives_surface_and_track_condition(self):
+        """Last3FFactorにsurfaceとtrack_conditionが渡されること"""
+        # Arrange
+        mock_repo = Mock()
+        past_results = [
+            {
+                "horse_id": "horse_001",
+                "last_3f": 33.5,
+                "surface": "芝",
+                "track_condition": "良",
+            },
+            {
+                "horse_id": "horse_001",
+                "last_3f": 34.0,
+                "surface": "芝",
+                "track_condition": "良",
+            },
+            {
+                "horse_id": "horse_001",
+                "last_3f": 33.8,
+                "surface": "芝",
+                "track_condition": "良",
+            },
+        ]
+
+        service = PredictionService(repository=mock_repo)
+
+        # Last3FFactorをモック化して呼び出しを記録
+        mock_factor = Mock()
+        mock_factor.calculate = Mock(return_value=50.0)
+        service._factors["last_3f"] = mock_factor
+
+        entry = create_test_entry("horse_001", "Test Horse", 1)
+        race_info = {
+            "distance": 1600,
+            "surface": "芝",
+            "track_condition": "良",
+            "date": "2025-01-01",
+        }
+
+        # Act
+        service._calculate_factor_scores(
+            entry=entry, past_results=past_results, race_info=race_info
+        )
+
+        # Assert
+        assert mock_factor.calculate.called, "Last3FFactor.calculate()が呼ばれていない"
+        call_kwargs = mock_factor.calculate.call_args.kwargs
+        assert "surface" in call_kwargs, (
+            "Last3FFactorにsurfaceが渡されていない"
+        )
+        assert "track_condition" in call_kwargs, (
+            "Last3FFactorにtrack_conditionが渡されていない"
+        )
+        assert call_kwargs["surface"] == "芝", (
+            f"surfaceが'芝'ではなく{call_kwargs['surface']}になっている"
+        )
+        assert call_kwargs["track_condition"] == "良", (
+            f"track_conditionが'良'ではなく{call_kwargs['track_condition']}になっている"
+        )

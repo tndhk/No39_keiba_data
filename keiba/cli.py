@@ -250,11 +250,16 @@ def _save_race_data(session, race_data: dict) -> None:
 @main.command()
 @click.option("--db", required=True, type=click.Path(), help="DBファイルパス")
 @click.option("--limit", default=100, type=int, help="取得する馬の数（デフォルト: 100）")
-def scrape_horses(db: str, limit: int):
-    """詳細未取得の馬情報を収集"""
+@click.option("--all", "all_horses", is_flag=True, default=False, help="詳細取得済みも含め全頭を更新対象にする")
+def scrape_horses(db: str, limit: int, all_horses: bool):
+    """馬情報を収集・更新（デフォルトは詳細未取得のみ）"""
     click.echo(f"馬詳細データ収集開始")
     click.echo(f"データベース: {db}")
     click.echo(f"取得上限: {limit}件")
+    if all_horses:
+        click.echo("対象: 全頭（更新日時の古い順）")
+    else:
+        click.echo("対象: 詳細未取得の馬のみ")
 
     # DBを初期化
     engine = get_engine(db)
@@ -268,40 +273,66 @@ def scrape_horses(db: str, limit: int):
     updated_horses = 0
     errors = 0
 
+    # IDのリストを先に取得して、セッションを一度解放する（並列アクセスによるロックを避けるため）
     with get_session(engine) as session:
-        # 詳細未取得の馬を取得（sireがNullの馬）
-        horses = (
-            session.query(Horse)
-            .filter(
-                or_(
-                    Horse.sire.is_(None),
-                    Horse.sex == "不明",
-                )
-            )
+        # クエリの構築
+        query = session.query(Horse)
+        if not all_horses:
+            query = query.filter(or_(Horse.sire.is_(None), Horse.sex == "不明"))
+        
+        # 更新日時が古い順に取得
+        horses_data = (
+            query.order_by(Horse.updated_at.asc())
             .limit(limit)
-            .all()
+            .values(Horse.id, Horse.name, Horse.updated_at)
         )
+        
+        # 処理対象リストを作成
+        target_horses = [(h.id, h.name, h.updated_at) for h in horses_data]
 
-        if not horses:
-            click.echo("詳細未取得の馬はありません。")
-            return
+    if not target_horses:
+        click.echo("対象となる馬は見つかりませんでした。")
+        return
 
-        click.echo(f"詳細未取得の馬: {len(horses)}件")
-        click.echo("")
+    click.echo(f"処理対象: {len(target_horses)}件")
+    click.echo("")
 
-        for horse in horses:
-            total_processed += 1
-            click.echo(f"  [{total_processed}/{len(horses)}] {horse.name} ({horse.id})...")
+    for horse_id, horse_name, last_updated in target_horses:
+        total_processed += 1
+        click.echo(f"  [{total_processed}/{len(target_horses)}] {horse_name} ({horse_id})...")
+        click.echo(f"    (前回の更新: {last_updated})")
 
-            try:
-                horse_data = horse_detail_scraper.fetch_horse_detail(horse.id)
-                _update_horse(session, horse, horse_data)
+        try:
+            # 1頭ごとに完全に独立したセッションで更新
+            with get_session(engine) as sub_session:
+                h = sub_session.get(Horse, horse_id)
+                if not h:
+                    continue
+                
+                horse_data = horse_detail_scraper.fetch_horse_detail(h.id)
+                _update_horse(sub_session, h, horse_data)
+                
+                # 更新日時を明示的に「現在時刻」で上書き
+                # SQL上で確実に値が変わるように、ミリ秒単位まで含む現在時刻を設定
+                h.updated_at = dt.utcnow()
+                sub_session.add(h)
+                # sub_session を抜ける際に自動的に commit される
+
                 updated_horses += 1
                 click.echo(f"    更新完了")
-            except Exception as e:
-                errors += 1
-                click.echo(f"    エラー: {e}")
-                continue
+        except Exception as e:
+            errors += 1
+            # エラー時も更新日時だけは進めて、次回以降に後回しにする
+            try:
+                with get_session(engine) as sub_session:
+                    h = sub_session.get(Horse, horse_id)
+                    if h:
+                        h.updated_at = dt.utcnow()
+                        sub_session.add(h)
+            except:
+                pass
+            click.echo(f"    エラー（次回に後回し）: {e}")
+            continue
 
     click.echo("")
     click.echo("=" * 50)

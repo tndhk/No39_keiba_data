@@ -44,6 +44,7 @@ class TimeIndexFactor(BaseFactor):
         race_results: list,
         target_surface: str | None = None,
         target_distance: int | None = None,
+        track_condition: str | None = None,
         **kwargs,
     ) -> float | None:
         """タイム指数スコアを計算する
@@ -53,6 +54,7 @@ class TimeIndexFactor(BaseFactor):
             race_results: レース結果のリスト
             target_surface: 対象馬場
             target_distance: 対象距離
+            track_condition: 馬場状態（良、稍重、重、不良など）
 
         Returns:
             0-100の範囲のスコア、データ不足の場合はNone
@@ -67,6 +69,7 @@ class TimeIndexFactor(BaseFactor):
             if r.get("surface") == target_surface
             and abs(r.get("distance", 0) - target_distance) <= 200
             and r.get("time")
+            and (track_condition is None or r.get("track_condition") == track_condition)
         ]
 
         if len(matching_races) < 3:

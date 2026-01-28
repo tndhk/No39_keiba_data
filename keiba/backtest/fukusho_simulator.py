@@ -83,10 +83,32 @@ class _BacktestRaceResultRepository:
                     "popularity": race_result.popularity,
                     "passing_order": race_result.passing_order,
                     "course": race_info.course,
+                    "race_name": race_info.name,
                 }
             )
 
         return results
+
+    def get_horse_info(self, horse_id: str) -> dict | None:
+        """馬の情報（血統含む）を取得
+
+        Args:
+            horse_id: 馬ID
+
+        Returns:
+            馬の情報辞書、存在しない場合はNone
+        """
+        from keiba.models.horse import Horse
+
+        horse = self._session.query(Horse).filter(Horse.id == horse_id).first()
+        if horse is None:
+            return None
+        return {
+            "horse_id": horse.id,
+            "name": horse.name,
+            "sire": horse.sire,
+            "dam_sire": horse.dam_sire,
+        }
 
 
 @dataclass(frozen=True)
@@ -194,12 +216,13 @@ class FukushoSimulator:
 
         return list(session.execute(stmt).scalars().all())
 
-    def simulate_race(self, race_id: str, top_n: int = 3) -> FukushoRaceResult:
+    def simulate_race(self, race_id: str, top_n: int = 3, model_path: str | None = None) -> FukushoRaceResult:
         """1レースの複勝シミュレーションを実行
 
         Args:
             race_id: レースID
             top_n: 購入する上位馬の数
+            model_path: MLモデルファイルパス（Noneの場合はファクタースコアのみ使用）
 
         Returns:
             FukushoRaceResult: シミュレーション結果
@@ -227,7 +250,7 @@ class FukushoSimulator:
 
             # 3. PredictionServiceで予測を実行
             repository = _BacktestRaceResultRepository(session)
-            prediction_service = PredictionService(repository=repository)
+            prediction_service = PredictionService(repository=repository, model_path=model_path)
             predictions = prediction_service.predict_from_shutuba(shutuba_data)
 
             # 4. 予測結果のrank順（=total_score降順）でTop-N馬番を取得
@@ -275,6 +298,7 @@ class FukushoSimulator:
         to_date: str,
         venues: list[str] | None = None,
         top_n: int = 3,
+        model_path: str | None = None,
     ) -> FukushoSummary:
         """期間シミュレーションを実行
 
@@ -283,6 +307,7 @@ class FukushoSimulator:
             to_date: 終了日 (YYYY-MM-DD形式)
             venues: 対象会場リスト（Noneの場合は全会場）
             top_n: 購入する上位馬の数
+            model_path: MLモデルファイルパス（Noneの場合はファクタースコアのみ使用）
 
         Returns:
             FukushoSummary: 期間サマリー
@@ -294,7 +319,7 @@ class FukushoSimulator:
 
         for race in races:
             try:
-                result = self.simulate_race(race.id, top_n)
+                result = self.simulate_race(race.id, top_n, model_path=model_path)
                 race_results.append(result)
             except Exception:
                 # レース取得エラーはスキップ
@@ -364,4 +389,5 @@ class FukushoSimulator:
             surface=race.surface,
             date=race.date.strftime("%Y-%m-%d"),
             entries=tuple(entries),
+            track_condition=race.track_condition,
         )

@@ -7,9 +7,14 @@ class CourseFitFactor(BaseFactor):
     """コース適性に基づくスコア計算
 
     同条件（芝/ダート × 距離帯）での3着内率を計算する。
+    サンプル数が少ない場合はベイジアン平滑化を適用する。
     """
 
     name = "course_fit"
+
+    # ベイジアン平滑化パラメータ
+    PRIOR_MEAN = 50.0  # 事前平均（全体平均として50%を仮定）
+    PRIOR_WEIGHT = 3  # 仮想サンプル数
 
     def _get_distance_band(self, distance: int) -> str:
         """距離帯を判定する
@@ -67,8 +72,14 @@ class CourseFitFactor(BaseFactor):
         if not matching_races:
             return None
 
-        # 3着内率を計算
+        # 生の3着内率を計算
+        n = len(matching_races)
         top3_count = sum(1 for r in matching_races if r["finish_position"] <= 3)
-        top3_rate = top3_count / len(matching_races) * 100
+        raw_score = top3_count / n * 100
 
-        return round(top3_rate, 1)
+        # ベイジアン平滑化: サンプル数が少ない場合は事前平均に寄せる
+        smoothed_score = (raw_score * n + self.PRIOR_MEAN * self.PRIOR_WEIGHT) / (
+            n + self.PRIOR_WEIGHT
+        )
+
+        return round(smoothed_score, 1)

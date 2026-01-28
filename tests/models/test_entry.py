@@ -532,3 +532,98 @@ class TestRaceEntryOptionalFields:
 
         assert entry.sex is None
         assert entry.age is None
+
+
+class TestShutubaDataTrackCondition:
+    """test_shutuba_data_track_condition: ShutubaDataにtrack_conditionフィールドが存在すること"""
+
+    def test_has_track_condition_field(self):
+        """track_condition フィールドが存在し、値を保持できる"""
+        from keiba.models.entry import RaceEntry, ShutubaData
+
+        entry = RaceEntry(
+            horse_id="123",
+            horse_name="テスト馬",
+            horse_number=1,
+            bracket_number=1,
+            jockey_id="j001",
+            jockey_name="テスト騎手",
+            impost=56.0,
+            sex="牡",
+            age=3,
+        )
+
+        # track_conditionフィールドを指定してShutubaDataを作成（現在は存在しないため失敗するはず）
+        data = ShutubaData(
+            race_id="202606010802",
+            race_name="京成杯",
+            race_number=11,
+            course="中山",
+            distance=2000,
+            surface="芝",
+            date="2026年1月8日",
+            entries=(entry,),
+            track_condition="良",
+        )
+
+        assert data.track_condition == "良"
+
+    def test_track_condition_can_be_none(self):
+        """track_condition フィールドは None を許容"""
+        from keiba.models.entry import RaceEntry, ShutubaData
+
+        entry = RaceEntry(
+            horse_id="123",
+            horse_name="テスト馬",
+            horse_number=1,
+            bracket_number=1,
+            jockey_id="j001",
+            jockey_name="テスト騎手",
+            impost=56.0,
+            sex="牡",
+            age=3,
+        )
+
+        data = ShutubaData(
+            race_id="202606010802",
+            race_name="京成杯",
+            race_number=11,
+            course="中山",
+            distance=2000,
+            surface="芝",
+            date="2026年1月8日",
+            entries=(entry,),
+            track_condition=None,
+        )
+
+        assert data.track_condition is None
+
+    def test_track_condition_default_is_none(self):
+        """track_condition フィールドのデフォルト値は None"""
+        from keiba.models.entry import RaceEntry, ShutubaData
+
+        entry = RaceEntry(
+            horse_id="123",
+            horse_name="テスト馬",
+            horse_number=1,
+            bracket_number=1,
+            jockey_id="j001",
+            jockey_name="テスト騎手",
+            impost=56.0,
+            sex="牡",
+            age=3,
+        )
+
+        # track_conditionを指定せずに作成（デフォルトでNoneになるはず）
+        data = ShutubaData(
+            race_id="202606010802",
+            race_name="京成杯",
+            race_number=11,
+            course="中山",
+            distance=2000,
+            surface="芝",
+            date="2026年1月8日",
+            entries=(entry,),
+        )
+
+        assert data.track_condition is None

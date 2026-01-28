@@ -143,11 +143,12 @@ class UmarenSimulator:
 
         return (combo_1_2, combo_1_3, combo_2_3)
 
-    def simulate_race(self, race_id: str) -> UmarenRaceResult:
+    def simulate_race(self, race_id: str, model_path: str | None = None) -> UmarenRaceResult:
         """1レースの馬連シミュレーションを実行
 
         Args:
             race_id: レースID
+            model_path: MLモデルファイルパス（Noneの場合はファクタースコアのみ使用）
 
         Returns:
             UmarenRaceResult: シミュレーション結果
@@ -175,7 +176,7 @@ class UmarenSimulator:
 
             # 3. PredictionServiceで予測を実行
             repository = _BacktestRaceResultRepository(session)
-            prediction_service = PredictionService(repository=repository)
+            prediction_service = PredictionService(repository=repository, model_path=model_path)
             predictions = prediction_service.predict_from_shutuba(shutuba_data)
 
             # 4. 予測結果のrank順（=total_score降順）でTop-3馬番を取得
@@ -226,6 +227,7 @@ class UmarenSimulator:
         from_date: str,
         to_date: str,
         venues: list[str] | None = None,
+        model_path: str | None = None,
     ) -> UmarenSummary:
         """期間シミュレーションを実行
 
@@ -233,6 +235,7 @@ class UmarenSimulator:
             from_date: 開始日 (YYYY-MM-DD形式)
             to_date: 終了日 (YYYY-MM-DD形式)
             venues: 対象会場リスト（Noneの場合は全会場）
+            model_path: MLモデルファイルパス（Noneの場合はファクタースコアのみ使用）
 
         Returns:
             UmarenSummary: 期間サマリー
@@ -244,7 +247,7 @@ class UmarenSimulator:
 
         for race in races:
             try:
-                result = self.simulate_race(race.id)
+                result = self.simulate_race(race.id, model_path=model_path)
                 race_results.append(result)
             except Exception:
                 # レース取得エラーはスキップ
@@ -312,4 +315,5 @@ class UmarenSimulator:
             surface=race.surface,
             date=race.date.strftime("%Y-%m-%d"),
             entries=tuple(entries),
+            track_condition=race.track_condition,
         )

@@ -12,21 +12,33 @@ class Last3FFactor(BaseFactor):
 
     name = "last_3f"
 
-    def calculate(self, horse_id: str, race_results: list, **kwargs) -> float | None:
+    def calculate(
+        self,
+        horse_id: str,
+        race_results: list,
+        surface: str | None = None,
+        track_condition: str | None = None,
+        **kwargs,
+    ) -> float | None:
         """上がり3Fスコアを計算する
 
         Args:
             horse_id: 馬ID
             race_results: レース結果のリスト
+            surface: 馬場（芝、ダート）
+            track_condition: 馬場状態（良、稍重、重、不良など）
 
         Returns:
             0-100の範囲のスコア、データ不足の場合はNone
         """
-        # 対象馬の上がり3Fデータを抽出
+        # 対象馬の上がり3Fデータを抽出（条件フィルタリング付き）
         horse_last_3f = [
             r.get("last_3f")
             for r in race_results
-            if r.get("horse_id") == horse_id and r.get("last_3f") is not None
+            if r.get("horse_id") == horse_id
+            and r.get("last_3f") is not None
+            and (surface is None or r.get("surface") == surface)
+            and (track_condition is None or r.get("track_condition") == track_condition)
         ]
 
         if not horse_last_3f:

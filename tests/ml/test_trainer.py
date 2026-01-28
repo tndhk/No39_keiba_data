@@ -146,11 +146,12 @@ class TestTrainer:
         assert trainer._params["n_estimators"] == 50
 
     def test_trainer_normal_params(self):
-        """通常モードで従来のパラメータが維持されること"""
+        """通常モードで最適化されたパラメータが設定されること"""
         trainer = Trainer(lightweight=False)
-        assert trainer._params["num_leaves"] == 31
+        assert trainer._params["num_leaves"] == 63
         assert trainer._params["learning_rate"] == 0.05
-        assert trainer._params["n_estimators"] == 100
+        assert trainer._params["n_estimators"] == 300
+        assert trainer._params["min_child_samples"] == 50
 
     def test_save_model_creates_file(self, tmp_path):
         """学習後にsave_modelでファイルが作成されること"""
@@ -177,3 +178,10 @@ class TestTrainer:
 
         with pytest.raises(ValueError, match="モデルが学習されていません"):
             trainer.save_model("/tmp/test_model.joblib")
+
+    def test_trainer_uses_early_stopping(self):
+        """early_stoppingラウンド数が定義されていること"""
+        trainer = Trainer(lightweight=False)
+        # EARLY_STOPPING_ROUNDSクラス変数が定義されている
+        assert hasattr(Trainer, "EARLY_STOPPING_ROUNDS")
+        assert Trainer.EARLY_STOPPING_ROUNDS == 50

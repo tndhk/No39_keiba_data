@@ -121,12 +121,13 @@ class TanshoSimulator:
 
         return list(session.execute(stmt).scalars().all())
 
-    def simulate_race(self, race_id: str, top_n: int = 3) -> TanshoRaceResult:
+    def simulate_race(self, race_id: str, top_n: int = 3, model_path: str | None = None) -> TanshoRaceResult:
         """1レースの単勝シミュレーションを実行
 
         Args:
             race_id: レースID
             top_n: 購入する上位馬の数
+            model_path: MLモデルファイルパス（Noneの場合はファクタースコアのみ使用）
 
         Returns:
             TanshoRaceResult: シミュレーション結果
@@ -154,7 +155,7 @@ class TanshoSimulator:
 
             # 3. PredictionServiceで予測を実行
             repository = _BacktestRaceResultRepository(session)
-            prediction_service = PredictionService(repository=repository)
+            prediction_service = PredictionService(repository=repository, model_path=model_path)
             predictions = prediction_service.predict_from_shutuba(shutuba_data)
 
             # 4. 予測結果のrank順（=total_score降順）でTop-N馬番を取得
@@ -198,6 +199,7 @@ class TanshoSimulator:
         to_date: str,
         venues: list[str] | None = None,
         top_n: int = 3,
+        model_path: str | None = None,
     ) -> TanshoSummary:
         """期間シミュレーションを実行
 
@@ -206,6 +208,7 @@ class TanshoSimulator:
             to_date: 終了日 (YYYY-MM-DD形式)
             venues: 対象会場リスト（Noneの場合は全会場）
             top_n: 購入する上位馬の数
+            model_path: MLモデルファイルパス（Noneの場合はファクタースコアのみ使用）
 
         Returns:
             TanshoSummary: 期間サマリー
@@ -217,7 +220,7 @@ class TanshoSimulator:
 
         for race in races:
             try:
-                result = self.simulate_race(race.id, top_n)
+                result = self.simulate_race(race.id, top_n, model_path=model_path)
                 race_results.append(result)
             except Exception:
                 # レース取得エラーはスキップ
@@ -287,4 +290,5 @@ class TanshoSimulator:
             surface=race.surface,
             date=race.date.strftime("%Y-%m-%d"),
             entries=tuple(entries),
+            track_condition=race.track_condition,
         )

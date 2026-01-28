@@ -1,5 +1,6 @@
 """FeatureBuilderのテスト"""
 
+import numpy as np
 import pytest
 
 from keiba.ml.feature_builder import FeatureBuilder
@@ -97,11 +98,11 @@ class TestFeatureBuilder:
             past_stats=past_stats,
         )
 
-        # 欠損値は-1で埋められる
-        assert features["odds"] == -1
-        assert features["popularity"] == -1
-        assert features["past_results_score"] == -1
-        assert features["win_rate"] == -1
+        # 欠損値はnp.nanで埋められる
+        assert np.isnan(features["odds"])
+        assert np.isnan(features["popularity"])
+        assert np.isnan(features["past_results_score"])
+        assert np.isnan(features["win_rate"])
 
     def test_get_feature_names(self):
         """特徴量名リスト取得のテスト"""
@@ -112,3 +113,47 @@ class TestFeatureBuilder:
         assert "odds" in names
         assert "past_results_score" in names
         assert "win_rate" in names
+
+    def test_missing_values_use_nan(self):
+        """欠損値がnp.nanで表現されること"""
+        builder = FeatureBuilder()
+
+        race_result = {
+            "horse_id": "2019104308",
+            "odds": None,
+            "popularity": None,
+            "weight": 480,
+            "weight_diff": None,
+            "age": 4,
+            "impost": 57.0,
+            "horse_number": 5,
+        }
+        factor_scores = {
+            "past_results": None,
+            "course_fit": 80.0,
+            "time_index": 70.0,
+            "last_3f": None,
+            "popularity": 90.0,
+            "pedigree": None,
+            "running_style": 70.0,
+        }
+        field_size = 16
+        past_stats = {
+            "win_rate": None,
+            "top3_rate": None,
+            "avg_finish_position": None,
+            "days_since_last_race": None,
+        }
+
+        features = builder.build_features(
+            race_result=race_result,
+            factor_scores=factor_scores,
+            field_size=field_size,
+            past_stats=past_stats,
+        )
+
+        # 欠損値はnp.nanで表現されるべき
+        assert np.isnan(features["odds"])
+        assert np.isnan(features["popularity"])
+        assert np.isnan(features["past_results_score"])
+        assert np.isnan(features["win_rate"])

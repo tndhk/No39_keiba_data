@@ -8,6 +8,7 @@ from keiba.backtest.fukusho_simulator import FukushoSimulator
 from keiba.backtest.tansho_simulator import TanshoSimulator
 from keiba.backtest.umaren_simulator import UmarenSimulator
 from keiba.backtest.sanrenpuku_simulator import SanrenpukuSimulator
+from keiba.ml.model_utils import find_latest_model
 
 
 def _get_display_width(text: str) -> int:
@@ -281,6 +282,7 @@ def backtest(
 @click.option("--top-n", type=int, default=3, help="Top何頭に賭けるか（デフォルト: 3）")
 @click.option("--venue", multiple=True, help="競馬場フィルタ（複数可）")
 @click.option("--db", required=True, type=click.Path(exists=True), help="DBファイルパス")
+@click.option("--model", type=click.Path(exists=True), default=None, help="MLモデルファイルパス（未指定時は最新モデルを自動検索）")
 @click.option("-v", "--verbose", is_flag=True, help="レース別詳細表示")
 def backtest_fukusho(
     from_date: str | None,
@@ -289,6 +291,7 @@ def backtest_fukusho(
     top_n: int,
     venue: tuple[str, ...],
     db: str,
+    model: str | None,
     verbose: bool,
 ):
     """複勝馬券のバックテストシミュレーションを実行する"""
@@ -298,9 +301,16 @@ def backtest_fukusho(
     # 会場リストの準備
     venues = list(venue) if venue else None
 
+    # モデルパスの決定
+    model_path = model
+    if model_path is None:
+        model_path = find_latest_model("data/models")
+
     # シミュレーション実行
     click.echo("=" * 40)
     click.echo(f"複勝シミュレーション: {from_date} ~ {to_date}")
+    if model_path:
+        click.echo(f"使用モデル: {model_path}")
     click.echo("=" * 40)
 
     simulator = FukushoSimulator(db)
@@ -309,6 +319,7 @@ def backtest_fukusho(
         to_date=to_date,
         venues=venues,
         top_n=top_n,
+        model_path=model_path,
     )
 
     # 詳細表示
@@ -346,6 +357,7 @@ def backtest_fukusho(
 @click.option("--top-n", type=int, default=3, help="Top何頭に賭けるか（デフォルト: 3）")
 @click.option("--venue", multiple=True, help="競馬場フィルタ（複数可）")
 @click.option("--db", required=True, type=click.Path(exists=True), help="DBファイルパス")
+@click.option("--model", type=click.Path(exists=True), default=None, help="MLモデルファイルパス（未指定時は最新モデルを自動検索）")
 @click.option("-v", "--verbose", is_flag=True, help="レース別詳細表示")
 def backtest_tansho(
     from_date: str | None,
@@ -354,6 +366,7 @@ def backtest_tansho(
     top_n: int,
     venue: tuple[str, ...],
     db: str,
+    model: str | None,
     verbose: bool,
 ):
     """単勝馬券のバックテストシミュレーションを実行する"""
@@ -363,9 +376,16 @@ def backtest_tansho(
     # 会場リストの準備
     venues = list(venue) if venue else None
 
+    # モデルパスの決定
+    model_path = model
+    if model_path is None:
+        model_path = find_latest_model("data/models")
+
     # シミュレーション実行
     click.echo("=" * 40)
     click.echo(f"単勝シミュレーション: {from_date} ~ {to_date}")
+    if model_path:
+        click.echo(f"使用モデル: {model_path}")
     click.echo("=" * 40)
 
     simulator = TanshoSimulator(db)
@@ -374,6 +394,7 @@ def backtest_tansho(
         to_date=to_date,
         venues=venues,
         top_n=top_n,
+        model_path=model_path,
     )
 
     # 詳細表示
@@ -410,6 +431,7 @@ def backtest_tansho(
 @click.option("--last-week", is_flag=True, help="先週を対象（デフォルト）")
 @click.option("--venue", multiple=True, help="競馬場フィルタ（複数可）")
 @click.option("--db", required=True, type=click.Path(exists=True), help="DBファイルパス")
+@click.option("--model", type=click.Path(exists=True), default=None, help="MLモデルファイルパス（未指定時は最新モデルを自動検索）")
 @click.option("-v", "--verbose", is_flag=True, help="レース別詳細表示")
 def backtest_umaren(
     from_date: str | None,
@@ -417,6 +439,7 @@ def backtest_umaren(
     last_week: bool,
     venue: tuple[str, ...],
     db: str,
+    model: str | None,
     verbose: bool,
 ):
     """馬連馬券のバックテストシミュレーションを実行する"""
@@ -426,9 +449,16 @@ def backtest_umaren(
     # 会場リストの準備
     venues = list(venue) if venue else None
 
+    # モデルパスの決定
+    model_path = model
+    if model_path is None:
+        model_path = find_latest_model("data/models")
+
     # シミュレーション実行
     click.echo("=" * 40)
     click.echo(f"馬連シミュレーション: {from_date} ~ {to_date}")
+    if model_path:
+        click.echo(f"使用モデル: {model_path}")
     click.echo("=" * 40)
 
     simulator = UmarenSimulator(db)
@@ -436,6 +466,7 @@ def backtest_umaren(
         from_date=from_date,
         to_date=to_date,
         venues=venues,
+        model_path=model_path,
     )
 
     # 詳細表示
@@ -471,6 +502,7 @@ def backtest_umaren(
 @click.option("--last-week", is_flag=True, help="先週を対象（デフォルト）")
 @click.option("--venue", multiple=True, help="競馬場フィルタ（複数可）")
 @click.option("--db", required=True, type=click.Path(exists=True), help="DBファイルパス")
+@click.option("--model", type=click.Path(exists=True), default=None, help="MLモデルファイルパス（未指定時は最新モデルを自動検索）")
 @click.option("-v", "--verbose", is_flag=True, help="レース別詳細表示")
 def backtest_sanrenpuku(
     from_date: str | None,
@@ -478,6 +510,7 @@ def backtest_sanrenpuku(
     last_week: bool,
     venue: tuple[str, ...],
     db: str,
+    model: str | None,
     verbose: bool,
 ):
     """三連複馬券のバックテストシミュレーションを実行する"""
@@ -487,9 +520,16 @@ def backtest_sanrenpuku(
     # 会場リストの準備
     venues = list(venue) if venue else None
 
+    # モデルパスの決定
+    model_path = model
+    if model_path is None:
+        model_path = find_latest_model("data/models")
+
     # シミュレーション実行
     click.echo("=" * 40)
     click.echo(f"三連複シミュレーション: {from_date} ~ {to_date}")
+    if model_path:
+        click.echo(f"使用モデル: {model_path}")
     click.echo("=" * 40)
 
     simulator = SanrenpukuSimulator(db)
@@ -497,6 +537,7 @@ def backtest_sanrenpuku(
         from_date=from_date,
         to_date=to_date,
         venues=venues,
+        model_path=model_path,
     )
 
     # 詳細表示
@@ -508,8 +549,8 @@ def backtest_sanrenpuku(
             hit_mark = "○" if result.hit else "×"
             click.echo(
                 f"{result.race_date} {result.venue} {result.race_name}: "
-                f"予測{result.bet_combination} -> "
-                f"結果{result.actual_combination} ({hit_mark}) "
+                f"予測{result.predicted_trio} -> "
+                f"結果{result.actual_trio} ({hit_mark}) "
                 f"払戻{result.payout}円"
             )
         click.echo("")
@@ -533,6 +574,7 @@ def backtest_sanrenpuku(
 @click.option("--top-n", type=int, default=3, help="単勝・複勝Top何頭に賭けるか（デフォルト: 3）")
 @click.option("--venue", multiple=True, help="競馬場フィルタ（複数可）")
 @click.option("--db", required=True, type=click.Path(exists=True), help="DBファイルパス")
+@click.option("--model", type=click.Path(exists=True), default=None, help="MLモデルファイルパス（未指定時は最新モデルを自動検索）")
 @click.option("-v", "--verbose", is_flag=True, help="レース別詳細表示")
 def backtest_all(
     from_date: str | None,
@@ -541,6 +583,7 @@ def backtest_all(
     top_n: int,
     venue: tuple[str, ...],
     db: str,
+    model: str | None,
     verbose: bool,
 ):
     """全券種（複勝・単勝・馬連・三連複）のバックテストを一括実行する"""
@@ -549,6 +592,18 @@ def backtest_all(
 
     # 会場リストの準備
     venues = list(venue) if venue else None
+
+    # モデルパスの決定
+    model_path = model
+    if model_path is None:
+        # 未指定時は最新モデルを自動検索
+        model_path = find_latest_model("data/models")
+        if model_path:
+            click.echo(f"使用モデル: {model_path} (自動検出)")
+        else:
+            click.echo("モデル: なし (ファクタースコアのみ)")
+    else:
+        click.echo(f"使用モデル: {model_path}")
 
     # ヘッダー表示
     click.echo("=" * 40)
@@ -562,6 +617,7 @@ def backtest_all(
         to_date=to_date,
         venues=venues,
         top_n=top_n,
+        model_path=model_path,
     )
 
     tansho_sim = TanshoSimulator(db)
@@ -570,6 +626,7 @@ def backtest_all(
         to_date=to_date,
         venues=venues,
         top_n=top_n,
+        model_path=model_path,
     )
 
     umaren_sim = UmarenSimulator(db)
@@ -577,6 +634,7 @@ def backtest_all(
         from_date=from_date,
         to_date=to_date,
         venues=venues,
+        model_path=model_path,
     )
 
     sanrenpuku_sim = SanrenpukuSimulator(db)
@@ -584,6 +642,7 @@ def backtest_all(
         from_date=from_date,
         to_date=to_date,
         venues=venues,
+        model_path=model_path,
     )
 
     # 対象レース数の表示

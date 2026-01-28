@@ -15,10 +15,14 @@ class Trainer:
 
     # 通常モード用パラメータ
     _NORMAL_PARAMS = {
-        "num_leaves": 31,
+        "num_leaves": 63,
         "learning_rate": 0.05,
-        "n_estimators": 100,
+        "n_estimators": 300,
+        "min_child_samples": 50,
     }
+
+    # early_stoppingラウンド数（validation set使用時のみ有効）
+    EARLY_STOPPING_ROUNDS = 50
 
     # 軽量モード用パラメータ（バックテスト向け）
     _LIGHTWEIGHT_PARAMS = {

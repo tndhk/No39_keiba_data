@@ -143,6 +143,7 @@ class PredictionService:
                 past_results=past_results,
                 factor_scores=factor_scores,
                 race_info=race_info,
+                field_size=len(shutuba_data.entries),
             )
 
             predictions.append(
@@ -233,18 +234,23 @@ class PredictionService:
                     scores[factor_name] = factor.calculate(
                         horse_id=entry.horse_id,
                         race_results=past_results,
-                        target_course=race_info["course"],
+                        target_surface=race_info["surface"],
                         target_distance=race_info["distance"],
                     )
                 elif factor_name == "time_index":
                     scores[factor_name] = factor.calculate(
                         horse_id=entry.horse_id,
                         race_results=past_results,
+                        target_surface=race_info["surface"],
+                        target_distance=race_info["distance"],
+                        track_condition=race_info.get("track_condition"),
                     )
                 elif factor_name == "last_3f":
                     scores[factor_name] = factor.calculate(
                         horse_id=entry.horse_id,
                         race_results=past_results,
+                        surface=race_info["surface"],
+                        track_condition=race_info.get("track_condition"),
                     )
                 elif factor_name == "popularity":
                     # 人気Factorは過去成績ではなく、直近の人気/オッズを使う
@@ -260,12 +266,19 @@ class PredictionService:
                     else:
                         scores[factor_name] = None
                 elif factor_name == "pedigree":
-                    scores[factor_name] = factor.calculate(
-                        horse_id=entry.horse_id,
-                        race_results=past_results,
-                        target_surface=race_info["surface"],
-                        target_distance=race_info["distance"],
-                    )
+                    # 馬の血統情報を取得
+                    horse_info = self._repository.get_horse_info(entry.horse_id)
+                    if horse_info:
+                        scores[factor_name] = factor.calculate(
+                            horse_id=entry.horse_id,
+                            race_results=past_results,
+                            sire=horse_info.get("sire"),
+                            dam_sire=horse_info.get("dam_sire"),
+                            distance=race_info["distance"],
+                            track_condition=race_info.get("track_condition"),
+                        )
+                    else:
+                        scores[factor_name] = None
                 elif factor_name == "running_style":
                     scores[factor_name] = factor.calculate(
                         horse_id=entry.horse_id,
@@ -286,6 +299,7 @@ class PredictionService:
         past_results: list,
         factor_scores: dict[str, float | None],
         race_info: dict,
+        field_size: int,
     ) -> float:
         """ML確率を計算
 
@@ -314,7 +328,9 @@ class PredictionService:
             feature_builder = FeatureBuilder()
 
             # 派生特徴量を計算
-            past_stats = self._calculate_past_stats(past_results, entry.horse_id)
+            past_stats = self._calculate_past_stats(
+                past_results, entry.horse_id, race_info["date"]
+            )
 
             # 最新の過去成績データ
             latest_result = past_results[0]
@@ -322,7 +338,7 @@ class PredictionService:
             features = feature_builder.build_features(
                 race_result=latest_result,
                 factor_scores=factor_scores,
-                field_size=len(past_results),
+                field_size=field_size,
                 past_stats=past_stats,
             )
 
@@ -367,13 +383,14 @@ class PredictionService:
         return round(combined, 1)
 
     def _calculate_past_stats(
-        self, past_results: list, horse_id: str
+        self, past_results: list, horse_id: str, race_date: str
     ) -> dict[str, float | None]:
         """過去成績から派生統計を計算
 
         Args:
             past_results: 過去成績リスト
             horse_id: 馬ID
+            race_date: レース日（YYYY年M月D日形式）
 
         Returns:
             派生統計の辞書
@@ -406,11 +423,39 @@ class PredictionService:
             sum(finish_positions) / len(finish_positions) if finish_positions else None
         )
 
+        # 最新レースからの経過日数を計算
+        days_since_last_race = None
+        if horse_results:
+            from keiba.cli.utils.date_parser import parse_race_date
+            from datetime import datetime
+
+            try:
+                # レース日を解析
+                target_date = parse_race_date(race_date)
+
+                # 最新レースの日付（horse_resultsは日付降順）
+                latest_race_date_str = horse_results[0].get("race_date")
+                if latest_race_date_str:
+                    # race_dateはYYYY-MM-DD形式の文字列
+                    if isinstance(latest_race_date_str, str):
+                        latest_race_date = datetime.strptime(
+                            latest_race_date_str, "%Y-%m-%d"
+                        ).date()
+                    else:
+                        # datetimeオブジェクトの場合
+                        latest_race_date = latest_race_date_str
+
+                    # 経過日数を計算
+                    days_since_last_race = (target_date - latest_race_date).days
+            except Exception:
+                # 日付解析失敗時はNone
+                days_since_last_race = None
+
         return {
             "win_rate": win_rate,
             "top3_rate": top3_rate,
             "avg_finish_position": avg_finish,
-            "days_since_last_race": None,  # 計算には追加の日付処理が必要
+            "days_since_last_race": days_since_last_race,
         }
 
     @staticmethod

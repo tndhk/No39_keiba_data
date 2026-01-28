@@ -28,6 +28,7 @@ keiba train --db data/keiba.db --output data/models/model.joblib
 keiba predict-day --venue 中山 --db data/keiba.db
 keiba review-day --venue 中山 --db data/keiba.db
 keiba backtest-fukusho --db data/keiba.db -v
+keiba backtest-all --last-week --db data/keiba.db --model data/models/model.joblib
 ```
 
 ## 使用方法
@@ -82,7 +83,14 @@ keiba review-day --venue 中山 --db data/keiba.db
 
 # 複勝シミュレーション（期間指定バックテスト）
 keiba backtest-fukusho --db data/keiba.db -v
-# オプション: --from/--to <YYYY-MM-DD>（期間指定）, --last-week, --top-n <int>（デフォルト3）, --venue <会場名>
+# オプション: --from/--to <YYYY-MM-DD>（期間指定）, --last-week, --top-n <int>（デフォルト3）, --venue <会場名>, --model <path>
+
+# ML統合バックテスト（モデル指定）
+keiba backtest-all --from 2025-10-01 --to 2025-12-31 --db data/keiba.db --model data/models/model.joblib
+
+# ML統合バックテスト（最新モデル自動検索）
+keiba backtest-all --last-week --db data/keiba.db
+# モデル未指定時は data/models/*.joblib から最新モデルを自動検索
 ```
 
 ### コマンドリファレンス
@@ -97,14 +105,25 @@ keiba backtest-fukusho --db data/keiba.db -v
 | predict-day | 日単位予測 | --date, --venue, --db, --no-ml |
 | review-day | 予測検証（複勝・単勝シミュレーション） | --date, --venue, --db |
 | backtest | 期間バックテスト | --db, --from, --to, --months, --retrain-interval |
-| backtest-fukusho | 複勝シミュレーション | --db, --from, --to, --last-week, --top-n, --venue |
-| backtest-all | 全券種一括バックテスト | --db, --from, --to, --last-week, --top-n, --venue, -v |
+| backtest-fukusho | 複勝シミュレーション | --db, --from, --to, --last-week, --top-n, --venue, --model |
+| backtest-tansho | 単勝シミュレーション | --db, --from, --to, --last-week, --top-n, --venue, --model |
+| backtest-umaren | 馬連シミュレーション | --db, --from, --to, --last-week, --venue, --model |
+| backtest-sanrenpuku | 三連複シミュレーション | --db, --from, --to, --last-week, --venue, --model |
+| backtest-all | 全券種一括バックテスト | --db, --from, --to, --last-week, --top-n, --venue, --model, -v |
 
 ### コマンド依存関係
 
 ```
 scrape（必須）→ scrape-horses（推奨）→ train（ML予測に必要）→ predict-day → review-day
+                                        └→ backtest-* （--modelでモデル指定、または最新モデル自動検索）
 ```
+
+### バックテストのML統合
+
+全バックテストコマンド（backtest-fukusho, backtest-tansho, backtest-umaren, backtest-sanrenpuku, backtest-all）は `--model` オプションでMLモデルを使用可能:
+- `--model <path>`: 指定したMLモデルファイルを使用
+- モデル未指定時: `data/models/*.joblib` から最新モデルを自動検索
+- モデルなし: ファクタースコアのみで予測（MLモデルが見つからない場合）
 
 ## 典型的なユースケース
 
@@ -123,9 +142,13 @@ keiba review-day --venue 中山 --date YYYY-MM-DD --db data/keiba.db
 ### 週次ワークフロー
 
 ```bash
-# 先週の全券種パフォーマンス評価（推奨）
+# 先週の全券種パフォーマンス評価（推奨、ML統合）
 keiba backtest-all --last-week --db data/keiba.db
+# → 最新モデルを自動検索してML予測を使用
 # → 複勝・単勝・馬連・三連複の的中率・回収率を一覧比較
+
+# モデル指定でバックテスト
+keiba backtest-all --last-week --db data/keiba.db --model data/models/model_202601.joblib
 
 # 複勝のみの詳細評価
 keiba backtest-fukusho --last-week --top-n 3 --db data/keiba.db -v
@@ -152,7 +175,7 @@ keiba train --db data/keiba.db --output data/models/model_202601.joblib
 | 初回 | 初期セットアップ | scrape（複数月）, scrape-horses, train |
 | 日次 | 当日予測 | predict-day |
 | 翌日 | 結果検証 | review-day |
-| 週次 | パフォーマンス評価 | backtest-all --last-week |
+| 週次 | パフォーマンス評価 | backtest-all --last-week (--model で指定可) |
 | 月次 | データ更新・再学習 | scrape, scrape-horses, train |
 | 随時 | 過去分析 | analyze |
 | 随時 | 単一レース予測 | predict |
@@ -169,7 +192,7 @@ CLI (keiba/cli/)
     │   ├── predict.py          # predict, predict-day
     │   ├── train.py            # train
     │   ├── review.py           # review-day
-    │   ├── backtest.py         # backtest, backtest-fukusho
+    │   ├── backtest.py         # backtest, backtest-fukusho, backtest-tansho, backtest-umaren, backtest-sanrenpuku, backtest-all
     │   └── migrate.py          # migrate-grades
     │
     ├── formatters/              # 出力フォーマッタ
@@ -213,7 +236,10 @@ CLI (keiba/cli/)
     │   └── model_utils          # モデルユーティリティ（最新モデル検索）
     │
     ├── Backtest (keiba/backtest/)
-    │   ├── FukushoSimulator     # 複勝シミュレーション
+    │   ├── FukushoSimulator     # 複勝シミュレーション（ML統合対応）
+    │   ├── TanshoSimulator      # 単勝シミュレーション（ML統合対応）
+    │   ├── UmarenSimulator      # 馬連シミュレーション（ML統合対応）
+    │   ├── SanrenpukuSimulator  # 三連複シミュレーション（ML統合対応）
     │   └── Backtester           # 過去データ検証
     │
     ├── Utils (keiba/utils/)

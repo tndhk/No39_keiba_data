@@ -53,6 +53,7 @@ class ShutubaData:
         surface: The track surface.
         date: The race date.
         entries: Tuple of RaceEntry objects (immutable).
+        track_condition: The track condition (e.g., "良", "稍重", "重", "不良").
     """
 
     race_id: str
@@ -63,3 +64,4 @@ class ShutubaData:
     surface: str
     date: str
     entries: tuple[RaceEntry, ...]
+    track_condition: str | None = None

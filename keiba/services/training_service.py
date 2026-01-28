@@ -43,6 +43,12 @@ def get_horse_past_results(session, horse_id: str) -> list[dict]:
                 "time": race_result.time,
                 "last_3f": race_result.last_3f,
                 "race_date": race_info.date,
+                "odds": race_result.odds,
+                "popularity": race_result.popularity,
+                "passing_order": race_result.passing_order,
+                "course": race_info.course,
+                "race_name": race_info.name,
+                "track_condition": race_info.track_condition,
             }
         )
 
@@ -158,9 +164,14 @@ def build_training_data(session, target_date: date) -> tuple[list[dict], list[in
                 ),
                 "time_index": factors["time_index"].calculate(
                     result.horse_id, horse_past,
-                    target_surface=race.surface, target_distance=race.distance
+                    target_surface=race.surface, target_distance=race.distance,
+                    track_condition=race.track_condition,
                 ),
-                "last_3f": factors["last_3f"].calculate(result.horse_id, horse_past),
+                "last_3f": factors["last_3f"].calculate(
+                    result.horse_id, horse_past,
+                    surface=race.surface,
+                    track_condition=race.track_condition,
+                ),
                 "popularity": factors["popularity"].calculate(
                     result.horse_id, [],
                     odds=result.odds, popularity=result.popularity
@@ -169,14 +180,12 @@ def build_training_data(session, target_date: date) -> tuple[list[dict], list[in
                     result.horse_id, [],
                     sire=horse.sire if horse else None,
                     dam_sire=horse.dam_sire if horse else None,
-                    target_surface=race.surface,
-                    target_distance=race.distance,
+                    distance=race.distance,
+                    track_condition=race.track_condition,
                 ),
                 "running_style": factors["running_style"].calculate(
                     result.horse_id, horse_past,
-                    passing_order=result.passing_order,
-                    course=race.course,
-                    distance=race.distance,
+                    target_distance=race.distance,
                 ),
             }
 

@@ -1,7 +1,7 @@
 """過去成績リポジトリ"""
 
 from keiba.cli.utils.date_parser import parse_race_date
-from keiba.models import Race, RaceResult
+from keiba.models import Horse, Race, RaceResult
 
 
 class SQLAlchemyRaceResultRepository:
@@ -72,3 +72,26 @@ class SQLAlchemyRaceResultRepository:
             )
 
         return results
+
+    def get_horse_info(self, horse_id: str) -> dict | None:
+        """馬の基本情報と血統情報を取得
+
+        Args:
+            horse_id: 馬ID
+
+        Returns:
+            馬情報の辞書（存在しない場合はNone）
+        """
+        horse = self.session.query(Horse).filter(Horse.id == horse_id).first()
+        if horse is None:
+            return None
+
+        return {
+            "horse_id": horse.id,
+            "name": horse.name,
+            "sex": horse.sex,
+            "birth_year": horse.birth_year,
+            "sire": horse.sire,
+            "dam": horse.dam,
+            "dam_sire": horse.dam_sire,
+        }

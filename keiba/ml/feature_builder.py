@@ -1,5 +1,6 @@
 """特徴量生成モジュール"""
 
+import numpy as np
 from typing import Any
 
 
@@ -40,7 +41,8 @@ class FeatureBuilder:
         "days_since_last_race",
     ]
 
-    MISSING_VALUE = -1
+    # LightGBMのネイティブ欠損値処理を活用するためnp.nanを使用
+    MISSING_VALUE = np.nan
 
     def __init__(self):
         """初期化"""

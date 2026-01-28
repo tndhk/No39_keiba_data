@@ -298,6 +298,68 @@ class TestPastResultsFactor:
         # presorted=Falseの方が高スコア（最新の1着が重視される）
         assert result_with_sort > result_skip_sort
 
+    def test_grade_multiplier_g1_higher_than_maiden(self, factor):
+        """G1の着順スコアが未勝利より高いこと"""
+        # G1で3着（18頭立て）
+        g1_results = [
+            {
+                "horse_id": "horse123",
+                "finish_position": 3,
+                "total_runners": 18,
+                "race_name": "ジャパンC(G1)",
+                "race_date": date(2024, 1, 1),
+            }
+        ]
+
+        # 未勝利で3着（18頭立て）
+        maiden_results = [
+            {
+                "horse_id": "horse123",
+                "finish_position": 3,
+                "total_runners": 18,
+                "race_name": "3歳未勝利",
+                "race_date": date(2024, 1, 1),
+            }
+        ]
+
+        g1_score = factor.calculate("horse123", g1_results)
+        maiden_score = factor.calculate("horse123", maiden_results)
+
+        assert g1_score is not None
+        assert maiden_score is not None
+        # G1の方が高スコアになるべき
+        assert g1_score > maiden_score
+
+    def test_grade_multiplier_applies_to_relative_score(self, factor):
+        """クラス補正後スコアが正しく計算されること"""
+        # G1 1着（10頭立て）: 基本スコア100 × 1.5倍 = 100（上限）
+        g1_first = [
+            {
+                "horse_id": "horse123",
+                "finish_position": 1,
+                "total_runners": 10,
+                "race_name": "有馬記念(G1)",
+                "race_date": date(2024, 1, 1),
+            }
+        ]
+
+        # 未勝利 1着（10頭立て）: 基本スコア100 × 0.8倍 = 80
+        maiden_first = [
+            {
+                "horse_id": "horse123",
+                "finish_position": 1,
+                "total_runners": 10,
+                "race_name": "3歳未勝利",
+                "race_date": date(2024, 1, 1),
+            }
+        ]
+
+        g1_score = factor.calculate("horse123", g1_first)
+        maiden_score = factor.calculate("horse123", maiden_first)
+
+        assert g1_score == 100.0  # 上限適用
+        assert maiden_score == 80.0  # 0.8倍補正
+
 
 class TestCourseFitFactor:
     """CourseFitFactor（コース適性）のテスト"""
@@ -313,7 +375,7 @@ class TestCourseFitFactor:
         assert factor.name == "course_fit"
 
     def test_calculate_top3_rate(self, factor):
-        """同条件での3着内率を計算する"""
+        """同条件での3着内率を計算する（ベイジアン平滑化適用後）"""
         # 芝1600m での成績: 3戦2勝（3着以内2回）
         race_results = [
             {
@@ -338,12 +400,14 @@ class TestCourseFitFactor:
                 "race_date": date(2024, 1, 1),
             },
         ]
-        # 同条件: 芝1600m → 3戦中2回が3着以内 = 66.7%
+        # 同条件: 芝1600m → 3戦中2回が3着以内
+        # 生スコア = 66.7%
+        # ベイジアン平滑化: (66.7 * 3 + 50 * 3) / (3 + 3) = 58.3
         result = factor.calculate(
             "horse123", race_results, target_surface="芝", target_distance=1600
         )
         assert result is not None
-        assert round(result, 1) == 66.7
+        assert round(result, 1) == 58.3
 
     def test_distance_band_short(self, factor):
         """距離帯の判定: 短距離（~1400m）"""
@@ -381,6 +445,52 @@ class TestCourseFitFactor:
             "horse123", race_results, target_surface="芝", target_distance=1600
         )
         assert result is None
+
+    def test_bayesian_smoothing_with_few_samples(self, factor):
+        """サンプル数が少ない場合、スコアが全体平均（50点）に近づく"""
+        # 1戦1勝（100%）だが、サンプル数が少ないので平滑化される
+        race_results_one_win = [
+            {
+                "horse_id": "horse123",
+                "finish_position": 1,
+                "surface": "芝",
+                "distance": 1600,
+                "race_date": date(2024, 1, 1),
+            },
+        ]
+        # ベイジアン平滑化なしだと100点
+        # 平滑化後: (100 * 1 + 50 * 3) / (1 + 3) = 62.5
+        result = factor.calculate(
+            "horse123", race_results_one_win, target_surface="芝", target_distance=1600
+        )
+        assert result is not None
+        # 100点よりは低く、50点に近づいているべき
+        assert result < 100.0
+        assert result > 50.0
+
+    def test_bayesian_smoothing_with_many_samples(self, factor):
+        """サンプル数が多い場合、実データに近いスコアになる"""
+        # 10戦10勝（100%）で、サンプル数が多いので実データに近い
+        race_results_many_wins = [
+            {
+                "horse_id": "horse123",
+                "finish_position": 1,
+                "surface": "芝",
+                "distance": 1600,
+                "race_date": date(2024, 1, i),
+            }
+            for i in range(1, 11)
+        ]
+        # 平滑化後: (100 * 10 + 50 * 3) / (10 + 3) = 88.5
+        result = factor.calculate(
+            "horse123",
+            race_results_many_wins,
+            target_surface="芝",
+            target_distance=1600,
+        )
+        assert result is not None
+        # サンプル数が多いので、100点に近いべき
+        assert result > 80.0
 
 
 class TestTimeIndexFactor:
@@ -452,6 +562,65 @@ class TestTimeIndexFactor:
         )
         assert result is None
 
+    def test_calculate_filters_by_track_condition(self, factor):
+        """馬場状態でフィルタリングされること"""
+        # 良馬場3件、重馬場2件の計5件
+        race_results = [
+            {
+                "horse_id": "horse123",
+                "time": "1:33.5",
+                "surface": "芝",
+                "distance": 1600,
+                "track_condition": "良",
+                "race_date": date(2024, 1, 5),
+            },
+            {
+                "horse_id": "horse456",
+                "time": "1:34.0",
+                "surface": "芝",
+                "distance": 1600,
+                "track_condition": "良",
+                "race_date": date(2024, 1, 4),
+            },
+            {
+                "horse_id": "horse789",
+                "time": "1:33.0",
+                "surface": "芝",
+                "distance": 1600,
+                "track_condition": "良",
+                "race_date": date(2024, 1, 3),
+            },
+            {
+                "horse_id": "horse123",
+                "time": "1:36.0",
+                "surface": "芝",
+                "distance": 1600,
+                "track_condition": "重",
+                "race_date": date(2024, 1, 2),
+            },
+            {
+                "horse_id": "horse456",
+                "time": "1:37.0",
+                "surface": "芝",
+                "distance": 1600,
+                "track_condition": "重",
+                "race_date": date(2024, 1, 1),
+            },
+        ]
+        # 良馬場のみでスコア計算（重馬場は除外される）
+        result = factor.calculate(
+            "horse123",
+            race_results,
+            target_surface="芝",
+            target_distance=1600,
+            track_condition="良",
+        )
+        # 良馬場3件のタイム: 93.5, 94.0, 93.0（平均93.5秒）
+        # horse123の良馬場タイム: 93.5秒
+        # diff = 93.5 - 93.5 = 0
+        # score = 50 + 0 * 10 = 50
+        assert result == 50.0
+
 
 class TestLast3FFactor:
     """Last3FFactor（上がり3F）のテスト"""
@@ -512,6 +681,64 @@ class TestLast3FFactor:
         fast_score = factor.calculate("horse123", fast_results)
         slow_score = factor.calculate("horse123", slow_results)
         assert fast_score > slow_score
+
+    def test_calculate_filters_by_track_condition_and_surface(self, factor):
+        """馬場状態・芝ダート別にフィルタリングされること"""
+        # 最新3走に重馬場を含めて、フィルタリング効果を確認
+        race_results = [
+            {
+                "horse_id": "horse123",
+                "last_3f": 36.0,  # 最新（重馬場）
+                "surface": "芝",
+                "track_condition": "重",
+                "race_date": date(2024, 1, 5),
+            },
+            {
+                "horse_id": "horse123",
+                "last_3f": 33.0,  # 2番目（良馬場）
+                "surface": "芝",
+                "track_condition": "良",
+                "race_date": date(2024, 1, 4),
+            },
+            {
+                "horse_id": "horse123",
+                "last_3f": 37.0,  # 3番目（重馬場）
+                "surface": "芝",
+                "track_condition": "重",
+                "race_date": date(2024, 1, 3),
+            },
+            {
+                "horse_id": "horse123",
+                "last_3f": 33.2,  # 4番目（良馬場）
+                "surface": "芝",
+                "track_condition": "良",
+                "race_date": date(2024, 1, 2),
+            },
+            {
+                "horse_id": "horse123",
+                "last_3f": 33.1,  # 5番目（良馬場）
+                "surface": "芝",
+                "track_condition": "良",
+                "race_date": date(2024, 1, 1),
+            },
+        ]
+
+        # 芝良馬場のみでスコア計算
+        result_filtered = factor.calculate(
+            "horse123",
+            race_results,
+            surface="芝",
+            track_condition="良",
+        )
+
+        # フィルタなしで計算（全データ使用）
+        result_unfiltered = factor.calculate("horse123", race_results)
+
+        # フィルタリングされている場合、芝良馬場のみ（33.0, 33.2, 33.1）を使用するため高スコア
+        # フィルタリングされていない場合、最新3走（36.0, 33.0, 37.0）を使用するため低スコア
+        # 両者は異なるべき
+        assert result_filtered != result_unfiltered
+        assert result_filtered > result_unfiltered
 
 
 class TestPopularityFactor:

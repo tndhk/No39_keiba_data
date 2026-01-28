@@ -40,6 +40,7 @@ class BaseScraper:
         """
         self.delay = delay
         self._last_request_time: float | None = None
+        self.session = requests.Session()
 
     def fetch(self, url: str) -> str:
         """Fetch HTML content from the specified URL.
@@ -58,13 +59,22 @@ class BaseScraper:
         """
         self._apply_delay()
 
-        headers = {"User-Agent": self.DEFAULT_USER_AGENT}
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-
+        headers = {
+            "User-Agent": self.DEFAULT_USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate",
+            "Referer": "https://db.netkeiba.com/",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+        }
+        response = self.session.get(url, headers=headers, timeout=10)
+        
         # netkeiba.com uses EUC-JP encoding
         if "netkeiba.com" in url:
             response.encoding = "EUC-JP"
+
+        response.raise_for_status()
 
         self._last_request_time = time.time()
 

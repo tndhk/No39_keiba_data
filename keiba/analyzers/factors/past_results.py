@@ -1,6 +1,7 @@
 """PastResultsFactor - 過去成績Factor"""
 
 from keiba.analyzers.factors.base import BaseFactor
+from keiba.utils.grade_extractor import extract_grade
 
 
 class PastResultsFactor(BaseFactor):
@@ -8,23 +9,53 @@ class PastResultsFactor(BaseFactor):
 
     直近5走の相対着順スコアの加重平均を計算する。
     相対着順スコア = (出走頭数 - 着順 + 1) / 出走頭数 × 100
+    レースクラス別の補正係数を適用する。
     """
 
     name = "past_results"
 
+    # レースクラス別補正係数
+    GRADE_MULTIPLIERS = {
+        "G1": 1.5,
+        "G2": 1.3,
+        "G3": 1.2,
+        "Jpn1": 1.4,
+        "Jpn2": 1.2,
+        "Jpn3": 1.1,
+        "L": 1.1,
+        "OP": 1.1,
+        "3WIN": 1.0,
+        "2WIN": 0.95,
+        "1WIN": 0.9,
+        "MAIDEN": 0.8,
+        "DEBUT": 0.7,
+    }
+
     def _calculate_relative_score(
-        self, finish_position: int, total_runners: int
+        self, finish_position: int, total_runners: int, race_name: str | None = None
     ) -> float:
         """相対着順スコアを計算する
 
         Args:
             finish_position: 着順
             total_runners: 出走頭数
+            race_name: レース名（グレード判定用）
 
         Returns:
-            0-100の範囲のスコア
+            0-100の範囲のスコア（クラス補正適用後、上限100）
         """
-        return (total_runners - finish_position + 1) / total_runners * 100
+        # 基本スコア
+        base_score = (total_runners - finish_position + 1) / total_runners * 100
+
+        # レースクラス補正
+        if race_name:
+            grade = extract_grade(race_name)
+            multiplier = self.GRADE_MULTIPLIERS.get(grade, 1.0)
+            score = base_score * multiplier
+            # 上限100点
+            return min(score, 100.0)
+
+        return base_score
 
     def calculate(
         self, horse_id: str, race_results: list, presorted: bool = False, **kwargs
@@ -66,7 +97,9 @@ class PastResultsFactor(BaseFactor):
 
         for i, race in enumerate(recent_races):
             score = self._calculate_relative_score(
-                race["finish_position"], race.get("total_runners", 10)
+                race["finish_position"],
+                race.get("total_runners", 10),
+                race.get("race_name"),
             )
             weight = weights[i] if i < len(weights) else weights[-1]
             total_score += score * weight

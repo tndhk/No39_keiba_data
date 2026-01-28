@@ -8,7 +8,10 @@
 - SQLiteデータベースに保存
 - 既存データのスキップ（再実行可能）
 - 馬の詳細情報（血統等）の収集
-- レース分析機能（スコア算出）
+- レース分析機能（7ファクタースコア算出）
+- LightGBMによるML予測（3着以内確率）
+- 全券種バックテスト（複勝・単勝・馬連・三連複）にML統合対応
+- 予測結果のMarkdown出力と検証
 
 ### 収集データ
 
@@ -167,23 +170,36 @@ keiba review-day --date 2026-01-24 --venue 中山 --db data/keiba.db
 - 的中率・回収率
 - レース別の予測結果と実際の結果の比較
 
-#### backtest-fukushoコマンド
+#### バックテストコマンド共通オプション
 
-過去データを使用して複勝馬券の購入戦略をシミュレートし、回収率を計算します。
+全バックテストコマンド（backtest-fukusho, backtest-tansho, backtest-umaren, backtest-sanrenpuku, backtest-all）は以下の共通オプションを持ちます:
 
 | オプション | 必須 | デフォルト | 説明 |
 |-----------|------|-----------|------|
 | --from    | No   | 先週の月曜日 | 開始日（YYYY-MM-DD形式） |
 | --to      | No   | 先週の日曜日 | 終了日（YYYY-MM-DD形式） |
 | --last-week | No | True | 先週を対象（デフォルト） |
-| --top-n   | No   | 3 | Top何頭に賭けるか |
 | --venue   | No   | 全会場 | 競馬場フィルタ（複数可） |
 | --db      | Yes  | - | DBファイルパス |
+| --model   | No   | 最新モデル自動検索 | MLモデルファイルパス |
 | -v, --verbose | No | False | レース別詳細表示 |
 
+`--model` オプションの動作:
+- 指定時: 指定したMLモデルファイル（.joblib）を使用してML予測を統合
+- 未指定時: `data/models/*.joblib` から最新モデルを自動検索
+- モデルなし: ファクタースコアのみで予測
+
+#### backtest-fukushoコマンド
+
+過去データを使用して複勝馬券の購入戦略をシミュレートし、回収率を計算します。
+追加オプション: `--top-n`（Top何頭に賭けるか、デフォルト: 3）
+
 ```bash
-# 先週のバックテスト（デフォルト）
+# 先週のバックテスト（デフォルト、ML統合）
 keiba backtest-fukusho --db data/keiba.db -v
+
+# モデル指定でバックテスト
+keiba backtest-fukusho --db data/keiba.db --model data/models/model.joblib
 
 # 期間指定
 keiba backtest-fukusho --from 2026-01-18 --to 2026-01-19 --db data/keiba.db
@@ -193,6 +209,50 @@ keiba backtest-fukusho --from 2026-01-18 --to 2026-01-19 --venue 中山 --venue 
 
 # Top5に賭ける戦略
 keiba backtest-fukusho --top-n 5 --db data/keiba.db
+```
+
+#### backtest-tanshoコマンド
+
+単勝馬券のバックテストシミュレーションを実行します。
+追加オプション: `--top-n`（Top何頭に賭けるか、デフォルト: 3）
+
+```bash
+keiba backtest-tansho --db data/keiba.db -v
+keiba backtest-tansho --from 2026-01-18 --to 2026-01-19 --db data/keiba.db --model data/models/model.joblib
+```
+
+#### backtest-umarenコマンド
+
+馬連馬券のバックテストシミュレーションを実行します（予測Top3から3点買い）。
+
+```bash
+keiba backtest-umaren --db data/keiba.db -v
+keiba backtest-umaren --from 2026-01-18 --to 2026-01-19 --db data/keiba.db --model data/models/model.joblib
+```
+
+#### backtest-sanrenpukuコマンド
+
+三連複馬券のバックテストシミュレーションを実行します（予測Top3の1点買い）。
+
+```bash
+keiba backtest-sanrenpuku --db data/keiba.db -v
+keiba backtest-sanrenpuku --from 2026-01-18 --to 2026-01-19 --db data/keiba.db --model data/models/model.joblib
+```
+
+#### backtest-allコマンド
+
+全券種（複勝・単勝・馬連・三連複）のバックテストを一括実行し、結果をテーブル形式で比較表示します。
+追加オプション: `--top-n`（単勝・複勝のTop何頭に賭けるか、デフォルト: 3）
+
+```bash
+# ML統合版（最新モデル自動検索）
+keiba backtest-all --last-week --db data/keiba.db
+
+# モデル指定
+keiba backtest-all --from 2025-10-01 --to 2025-12-31 --db data/keiba.db --model data/models/model.joblib
+
+# 詳細表示
+keiba backtest-all --last-week --db data/keiba.db -v
 ```
 
 シミュレーション結果には以下が含まれます:
