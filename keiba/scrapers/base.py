@@ -68,17 +68,18 @@ class BaseScraper:
             "Connection": "keep-alive",
             "Upgrade-Insecure-Requests": "1",
         }
-        response = self.session.get(url, headers=headers, timeout=10)
-        
-        # netkeiba.com uses EUC-JP encoding
-        if "netkeiba.com" in url:
-            response.encoding = "EUC-JP"
+        try:
+            response = self.session.get(url, headers=headers, timeout=10)
 
-        response.raise_for_status()
+            # netkeiba.com uses EUC-JP encoding
+            if "netkeiba.com" in url:
+                response.encoding = "EUC-JP"
 
-        self._last_request_time = time.time()
+            response.raise_for_status()
 
-        return response.text
+            return response.text
+        finally:
+            self._last_request_time = time.time()
 
     def _apply_delay(self) -> None:
         """Apply delay if needed based on last request time."""
