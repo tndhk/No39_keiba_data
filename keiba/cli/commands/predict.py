@@ -10,6 +10,7 @@ import click
 from keiba.cli.formatters.markdown import save_predictions_markdown
 from keiba.cli.utils.table_printer import print_prediction_table
 from keiba.cli.utils.url_parser import extract_race_id_from_shutuba_url
+from keiba.cli.utils.venue_filter import get_race_ids_for_venue
 from keiba.constants import VENUE_CODE_MAP
 from keiba.db import get_engine, get_session
 from keiba.ml.model_utils import find_latest_model
@@ -90,28 +91,6 @@ class SQLAlchemyRaceResultRepository:
         return results
 
 
-def _get_race_ids_for_venue(race_urls: list[str], venue_code: str) -> list[str]:
-    """指定競馬場のレースIDをフィルタリングする
-
-    Args:
-        race_urls: レースURLのリスト
-        venue_code: 競馬場コード（2桁の文字列、例: "06"）
-
-    Returns:
-        指定競馬場のレースIDリスト
-    """
-    race_ids = []
-
-    for url in race_urls:
-        # URLからレースIDを抽出
-        match = re.search(r"/race/(\d{12})/?", url)
-        if match:
-            race_id = match.group(1)
-            # race_idの5-6桁目が競馬場コード
-            if len(race_id) >= 6 and race_id[4:6] == venue_code:
-                race_ids.append(race_id)
-
-    return race_ids
 
 
 @click.command()
@@ -214,7 +193,7 @@ def predict_day(date_str: str | None, venue: str, db: str, no_ml: bool):
         raise SystemExit(1)
 
     # 指定競馬場のレースをフィルタリング
-    race_ids = _get_race_ids_for_venue(race_urls, venue_code)
+    race_ids = get_race_ids_for_venue(race_urls, venue_code)
 
     if not race_ids:
         click.echo(f"{date_str} {venue}のレースは見つかりませんでした")

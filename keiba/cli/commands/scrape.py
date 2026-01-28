@@ -5,14 +5,17 @@
 
 import calendar
 import re
-from datetime import date
+from datetime import date, datetime
 
 import click
 from sqlalchemy import or_
 
+from keiba.cli.utils.venue_filter import get_race_ids_for_venue
+from keiba.constants import VENUE_CODE_MAP
 from keiba.db import get_engine, get_session, init_db
 from keiba.models import Horse, Jockey, Race, RaceResult, Trainer
 from keiba.scrapers import HorseDetailScraper, RaceDetailScraper, RaceListScraper
+from keiba.scrapers.shutuba import ShutubaScraper
 
 
 def parse_race_date(date_str: str) -> date:
@@ -126,11 +129,20 @@ def scrape(year: int, month: int, db: str, jra_only: bool):
 @click.command()
 @click.option("--db", required=True, type=click.Path(), help="DBファイルパス")
 @click.option("--limit", default=100, type=int, help="取得する馬の数（デフォルト: 100）")
-def scrape_horses(db: str, limit: int):
+@click.option("--date", default=None, type=str, help="開催日（YYYY-MM-DD形式）")
+@click.option("--venue", default=None, type=str, help="競馬場名（例: 中山）")
+def scrape_horses(db: str, limit: int, date: str | None, venue: str | None):
     """詳細未取得の馬情報を収集"""
     click.echo(f"馬詳細データ収集開始")
     click.echo(f"データベース: {db}")
-    click.echo(f"取得上限: {limit}件")
+
+    if date:
+        click.echo(f"モード: 出馬表ベース ({date})")
+        if venue:
+            click.echo(f"会場: {venue}")
+    else:
+        click.echo(f"モード: 全馬対象")
+        click.echo(f"取得上限: {limit}件")
 
     # DBを初期化
     engine = get_engine(db)
@@ -145,29 +157,34 @@ def scrape_horses(db: str, limit: int):
     errors = 0
 
     with get_session(engine) as session:
-        # 詳細未取得の馬を取得（sireがNullの馬）
-        horses = (
-            session.query(Horse)
-            .filter(
-                or_(
-                    Horse.sire.is_(None),
-                    Horse.sex == "不明",
+        # 対象馬を収集
+        if date:
+            # 新モード: 出馬表ベースで対象馬を絞り込み
+            target_horses = _collect_horses_from_shutuba(session, date, venue)
+        else:
+            # 既存モード: sireがNullの馬をlimit件取得
+            target_horses = (
+                session.query(Horse)
+                .filter(
+                    or_(
+                        Horse.sire.is_(None),
+                        Horse.sex == "不明",
+                    )
                 )
+                .limit(limit)
+                .all()
             )
-            .limit(limit)
-            .all()
-        )
 
-        if not horses:
-            click.echo("詳細未取得の馬はありません。")
+        if not target_horses:
+            click.echo("対象の馬はありません。")
             return
 
-        click.echo(f"詳細未取得の馬: {len(horses)}件")
+        click.echo(f"対象馬: {len(target_horses)}件")
         click.echo("")
 
-        for horse in horses:
+        for horse in target_horses:
             total_processed += 1
-            click.echo(f"  [{total_processed}/{len(horses)}] {horse.name} ({horse.id})...")
+            click.echo(f"  [{total_processed}/{len(target_horses)}] {horse.name} ({horse.id})...")
 
             try:
                 horse_data = horse_detail_scraper.fetch_horse_detail(horse.id)
@@ -185,6 +202,93 @@ def scrape_horses(db: str, limit: int):
     click.echo(f"  処理数: {total_processed}")
     click.echo(f"  更新成功: {updated_horses}")
     click.echo(f"  エラー: {errors}")
+
+
+def _collect_horses_from_shutuba(
+    session, date_str: str, venue: str | None
+) -> list[Horse]:
+    """出馬表から対象馬を収集する
+
+    Args:
+        session: SQLAlchemyセッション
+        date_str: 日付文字列（YYYY-MM-DD形式）
+        venue: 競馬場名（省略時は全JRA会場）
+
+    Returns:
+        sireが未取得の馬のリスト
+    """
+    # 日付を解析
+    try:
+        target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError as e:
+        click.echo(f"日付形式エラー: {e}")
+        return []
+
+    # レース一覧を取得
+    race_list_scraper = RaceListScraper()
+    try:
+        race_urls = race_list_scraper.fetch_race_urls(
+            target_date.year, target_date.month, target_date.day, jra_only=True
+        )
+    except Exception as e:
+        click.echo(f"レース一覧取得エラー: {e}")
+        return []
+
+    # 会場でフィルタリング
+    if venue:
+        if venue not in VENUE_CODE_MAP:
+            click.echo(f"無効な競馬場名: {venue}")
+            return []
+        venue_code = VENUE_CODE_MAP[venue]
+        race_ids = get_race_ids_for_venue(race_urls, venue_code)
+    else:
+        # 全JRAレースのrace_idを抽出
+        race_ids = []
+        for url in race_urls:
+            match = re.search(r"/race/(\d{12})/?", url)
+            if match:
+                race_ids.append(match.group(1))
+
+    click.echo(f"対象レース数: {len(race_ids)}")
+
+    # 各レースの出馬表から horse_id を収集
+    shutuba_scraper = ShutubaScraper()
+    horse_ids = set()
+
+    for race_id in race_ids:
+        try:
+            shutuba_data = shutuba_scraper.fetch_shutuba(race_id)
+            for entry in shutuba_data.entries:
+                horse_ids.add(entry.horse_id)
+        except Exception as e:
+            click.echo(f"  出馬表取得エラー ({race_id}): {e}")
+            continue
+
+    click.echo(f"出走予定馬数: {len(horse_ids)}")
+
+    # DB照合: sire IS NULL の馬だけを抽出（取得済みはスキップ）
+    target_horses = []
+    for horse_id in horse_ids:
+        horse = session.get(Horse, horse_id)
+
+        if not horse:
+            # DB未登録の馬は仮レコードを作成
+            horse = Horse(
+                id=horse_id,
+                name="未取得",
+                sex="不明",
+                birth_year=0,
+            )
+            session.add(horse)
+            session.flush()  # IDを確定させる
+
+        # sire が既に取得済みの馬はスキップ
+        if horse.sire is not None:
+            continue
+
+        target_horses.append(horse)
+
+    return target_horses
 
 
 def _save_race_data(session, race_data: dict) -> None:

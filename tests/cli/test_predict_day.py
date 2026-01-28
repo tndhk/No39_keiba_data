@@ -76,11 +76,11 @@ class TestVenueCodeMap:
 
 
 class TestGetRaceIdsForVenue:
-    """_get_race_ids_for_venue関数のテスト"""
+    """get_race_ids_for_venue関数のテスト（venue_filterに移動）"""
 
     def test_filters_race_ids_by_venue_code(self):
         """指定競馬場のレースIDのみフィルタリングする"""
-        from keiba.cli.commands.predict import _get_race_ids_for_venue
+        from keiba.cli.utils.venue_filter import get_race_ids_for_venue
 
         race_urls = [
             "https://db.netkeiba.com/race/202606010801/",  # 中山 (06)
@@ -89,7 +89,7 @@ class TestGetRaceIdsForVenue:
             "https://db.netkeiba.com/race/202609010801/",  # 阪神 (09)
         ]
 
-        result = _get_race_ids_for_venue(race_urls, "06")
+        result = get_race_ids_for_venue(race_urls, "06")
 
         assert len(result) == 2
         assert "202606010801" in result
@@ -97,34 +97,34 @@ class TestGetRaceIdsForVenue:
 
     def test_returns_empty_list_when_no_match(self):
         """該当競馬場のレースがない場合は空リストを返す"""
-        from keiba.cli.commands.predict import _get_race_ids_for_venue
+        from keiba.cli.utils.venue_filter import get_race_ids_for_venue
 
         race_urls = [
             "https://db.netkeiba.com/race/202605010801/",  # 東京 (05)
             "https://db.netkeiba.com/race/202609010801/",  # 阪神 (09)
         ]
 
-        result = _get_race_ids_for_venue(race_urls, "06")
+        result = get_race_ids_for_venue(race_urls, "06")
 
         assert result == []
 
     def test_handles_empty_input(self):
         """空リスト入力時は空リストを返す"""
-        from keiba.cli.commands.predict import _get_race_ids_for_venue
+        from keiba.cli.utils.venue_filter import get_race_ids_for_venue
 
-        result = _get_race_ids_for_venue([], "06")
+        result = get_race_ids_for_venue([], "06")
 
         assert result == []
 
     def test_extracts_race_id_from_url(self):
         """URLからレースIDを正しく抽出する"""
-        from keiba.cli.commands.predict import _get_race_ids_for_venue
+        from keiba.cli.utils.venue_filter import get_race_ids_for_venue
 
         race_urls = [
             "https://db.netkeiba.com/race/202606010812/",  # trailing slash
         ]
 
-        result = _get_race_ids_for_venue(race_urls, "06")
+        result = get_race_ids_for_venue(race_urls, "06")
 
         assert result == ["202606010812"]
 
