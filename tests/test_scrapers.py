@@ -1151,3 +1151,44 @@ class TestHorseDetailScraperFetchHorseDetail:
         assert result["total_races"] == 5
         assert result["total_wins"] == 3
         assert result["total_earnings"] == 15234
+
+
+# =============================================================================
+# Task 2a: HorseDetailScraper.parse() 追加テスト
+# =============================================================================
+
+
+class TestHorseDetailScraperParseDamSire:
+    """HorseDetailScraper.parse()の母父抽出テスト"""
+
+    def test_parse_extracts_dam_sire(self, horse_detail_scraper, horse_detail_html):
+        """parse()は母父(dam_sire)を正しく抽出する"""
+        soup = horse_detail_scraper.get_soup(horse_detail_html)
+        result = horse_detail_scraper.parse(soup, horse_id="2019104251")
+        # fixtureでは母父は"Vindication"（母"ダストアンドダイヤモンズ"の次の要素）
+        assert result["dam_sire"] == "Vindication"
+
+    def test_parse_empty_html_has_parse_warnings(self, horse_detail_scraper):
+        """parse()は空HTMLの場合にparse_warningsを返す"""
+        empty_html = "<html><body></body></html>"
+        soup = horse_detail_scraper.get_soup(empty_html)
+        result = horse_detail_scraper.parse(soup, horse_id="test123")
+
+        assert "parse_warnings" in result
+        assert isinstance(result["parse_warnings"], list)
+        assert len(result["parse_warnings"]) > 0
+
+    def test_parse_pedigree_missing_table_has_warning(self, horse_detail_scraper):
+        """parse()はblood_tableがない場合にparse_warningsに警告を含む"""
+        html_without_blood_table = """
+        <html><body>
+            <div class="horse_title">
+                <h1 class="horse_title">テスト馬</h1>
+            </div>
+        </body></html>
+        """
+        soup = horse_detail_scraper.get_soup(html_without_blood_table)
+        result = horse_detail_scraper.parse(soup, horse_id="test123")
+
+        assert "parse_warnings" in result
+        assert any("blood_table" in warning for warning in result["parse_warnings"])

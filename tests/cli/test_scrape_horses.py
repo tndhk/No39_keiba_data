@@ -441,3 +441,177 @@ class TestScrapeHorsesLegacyLimitMode:
         mock_query.filter.return_value.limit.assert_called_with(5)
         # HorseDetailScraper が呼ばれたこと
         assert mock_detail_scraper.fetch_horse_detail.call_count == 1
+
+
+# =============================================================================
+# Task 2d: CLI出力改善のテスト
+# =============================================================================
+
+
+class TestScrapeHorsesVerboseOutput:
+    """--verbose モードの出力テスト"""
+
+    @patch("keiba.cli.commands.scrape.HorseDetailScraper")
+    @patch("keiba.cli.commands.scrape.get_session")
+    @patch("keiba.cli.commands.scrape.get_engine")
+    @patch("keiba.cli.commands.scrape.init_db")
+    def test_verbose_mode_shows_parsed_fields(
+        self,
+        mock_init_db,
+        mock_get_engine,
+        mock_get_session,
+        mock_horse_detail_scraper,
+    ):
+        """--verbose でパース結果（取得できたフィールド）が表示される"""
+        # Mock setup
+        mock_engine = MagicMock()
+        mock_get_engine.return_value = mock_engine
+        mock_session = MagicMock()
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        # Query mock (sire が NULL の馬を返す)
+        horse = Horse(id="2021101234", name="テストホース", sex="不明", birth_year=0)
+        mock_query = MagicMock()
+        mock_query.filter.return_value.limit.return_value.all.return_value = [horse]
+        mock_session.query.return_value = mock_query
+
+        # HorseDetailScraper mock
+        mock_detail_scraper = MagicMock()
+        mock_detail_scraper.fetch_horse_detail.return_value = {
+            "name": "テストホース",
+            "sire": "父馬",
+            "dam": "母馬",
+        }
+        mock_horse_detail_scraper.return_value = mock_detail_scraper
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main,
+                [
+                    "scrape-horses",
+                    "--db",
+                    "test.db",
+                    "--limit",
+                    "1",
+                    "--verbose",
+                ],
+            )
+
+        # --verbose モードで取得したフィールドが表示される
+        assert result.exit_code == 0
+        assert "sire" in result.output or "父" in result.output
+        assert "dam" in result.output or "母" in result.output
+
+
+class TestScrapeHorsesWarnings:
+    """警告出力のテスト"""
+
+    @patch("keiba.cli.commands.scrape.HorseDetailScraper")
+    @patch("keiba.cli.commands.scrape.get_session")
+    @patch("keiba.cli.commands.scrape.get_engine")
+    @patch("keiba.cli.commands.scrape.init_db")
+    def test_warning_when_zero_fields_updated(
+        self,
+        mock_init_db,
+        mock_get_engine,
+        mock_get_session,
+        mock_horse_detail_scraper,
+    ):
+        """更新フィールドが0の場合に警告が出る"""
+        # Mock setup
+        mock_engine = MagicMock()
+        mock_get_engine.return_value = mock_engine
+        mock_session = MagicMock()
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        # Query mock
+        horse = Horse(id="2021101234", name="テストホース", sex="不明", birth_year=0)
+        mock_query = MagicMock()
+        mock_query.filter.return_value.limit.return_value.all.return_value = [horse]
+        mock_session.query.return_value = mock_query
+
+        # HorseDetailScraper mock (空データを返す)
+        mock_detail_scraper = MagicMock()
+        mock_detail_scraper.fetch_horse_detail.return_value = {}
+        mock_horse_detail_scraper.return_value = mock_detail_scraper
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main,
+                [
+                    "scrape-horses",
+                    "--db",
+                    "test.db",
+                    "--limit",
+                    "1",
+                ],
+            )
+
+        # 0フィールド更新時に警告が表示される
+        assert result.exit_code == 0
+        assert "警告" in result.output or "warning" in result.output.lower()
+
+
+class TestScrapeHorsesSummaryOutput:
+    """サマリー出力のテスト"""
+
+    @patch("keiba.cli.commands.scrape.HorseDetailScraper")
+    @patch("keiba.cli.commands.scrape.get_session")
+    @patch("keiba.cli.commands.scrape.get_engine")
+    @patch("keiba.cli.commands.scrape.init_db")
+    def test_summary_shows_actual_update_count(
+        self,
+        mock_init_db,
+        mock_get_engine,
+        mock_get_session,
+        mock_horse_detail_scraper,
+    ):
+        """サマリーに実際の更新馬数が表示される"""
+        # Mock setup
+        mock_engine = MagicMock()
+        mock_get_engine.return_value = mock_engine
+        mock_session = MagicMock()
+        mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        # Query mock (2頭返す)
+        horse1 = Horse(id="2021101234", name="馬1", sex="不明", birth_year=0)
+        horse2 = Horse(id="2021101235", name="馬2", sex="不明", birth_year=0)
+        mock_query = MagicMock()
+        mock_query.filter.return_value.limit.return_value.all.return_value = [
+            horse1,
+            horse2,
+        ]
+        mock_session.query.return_value = mock_query
+
+        # HorseDetailScraper mock (1頭目は成功、2頭目は空データ)
+        mock_detail_scraper = MagicMock()
+        mock_detail_scraper.fetch_horse_detail.side_effect = [
+            {"name": "馬1", "sire": "父馬1"},  # 2フィールド更新
+            {},  # 0フィールド更新
+        ]
+        mock_horse_detail_scraper.return_value = mock_detail_scraper
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main,
+                [
+                    "scrape-horses",
+                    "--db",
+                    "test.db",
+                    "--limit",
+                    "2",
+                ],
+            )
+
+        # サマリーに「実際に更新した馬数」が表示される
+        # 処理数: 2、実際の更新: 1（1頭のみ実際に更新された）
+        assert result.exit_code == 0
+        assert "処理数: 2" in result.output or "処理数:2" in result.output
+        # 実際の更新数は1頭のみ
+        assert "実際の更新: 1" in result.output or "更新成功: 1" in result.output
