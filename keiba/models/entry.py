@@ -5,7 +5,6 @@ and shutuba (race entry table) data.
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -33,8 +32,8 @@ class RaceEntry:
     jockey_id: str
     jockey_name: str
     impost: float
-    sex: Optional[str] = None
-    age: Optional[int] = None
+    sex: str | None = None
+    age: int | None = None
 
 
 @dataclass(frozen=True)

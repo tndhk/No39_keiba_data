@@ -4,111 +4,15 @@
 """
 
 from dataclasses import dataclass
-from datetime import datetime
 
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import Session
+from sqlalchemy import select
 
-from keiba.models.entry import RaceEntry, ShutubaData
+from keiba.backtest.base_simulator import BaseSimulator
 from keiba.models.race import Race
 from keiba.models.race_result import RaceResult
+from keiba.repositories.race_result_repository import SQLAlchemyRaceResultRepository
 from keiba.scrapers.race_detail import RaceDetailScraper
 from keiba.services.prediction_service import PredictionService
-
-
-class _BacktestRaceResultRepository:
-    """バックテスト用シンプルリポジトリ
-
-    PredictionServiceのRaceResultRepositoryプロトコルを実装する。
-    """
-
-    def __init__(self, session: Session):
-        """初期化
-
-        Args:
-            session: SQLAlchemyセッション
-        """
-        self._session = session
-
-    def get_past_results(
-        self, horse_id: str, before_date: str, limit: int = 20
-    ) -> list[dict]:
-        """指定日より前の過去成績を取得
-
-        Args:
-            horse_id: 馬ID
-            before_date: この日付より前の成績を取得（YYYY-MM-DD形式）
-            limit: 最大取得件数
-
-        Returns:
-            過去成績のリスト
-        """
-        # 日付を解析
-        try:
-            target_date = datetime.strptime(before_date, "%Y-%m-%d").date()
-        except ValueError:
-            # 解析失敗時は空リストを返す
-            return []
-
-        # 過去のレース結果を取得
-        past_results_query = (
-            self._session.query(RaceResult, Race)
-            .join(Race, RaceResult.race_id == Race.id)
-            .filter(RaceResult.horse_id == horse_id)
-            .filter(Race.date < target_date)
-            .order_by(Race.date.desc())
-            .limit(limit)
-        )
-
-        results = []
-        for race_result, race_info in past_results_query:
-            # 同じレースの出走頭数を取得
-            total_runners = (
-                self._session.query(RaceResult)
-                .filter(RaceResult.race_id == race_info.id)
-                .count()
-            )
-
-            results.append(
-                {
-                    "horse_id": race_result.horse_id,
-                    "finish_position": race_result.finish_position,
-                    "total_runners": total_runners,
-                    "surface": race_info.surface,
-                    "distance": race_info.distance,
-                    "time": race_result.time,
-                    "last_3f": race_result.last_3f,
-                    "race_date": race_info.date,
-                    "odds": race_result.odds,
-                    "popularity": race_result.popularity,
-                    "passing_order": race_result.passing_order,
-                    "course": race_info.course,
-                    "race_name": race_info.name,
-                }
-            )
-
-        return results
-
-    def get_horse_info(self, horse_id: str) -> dict | None:
-        """馬の情報（血統含む）を取得
-
-        Args:
-            horse_id: 馬ID
-
-        Returns:
-            馬の情報辞書、存在しない場合はNone
-        """
-        from keiba.models.horse import Horse
-
-        horse = self._session.query(Horse).filter(Horse.id == horse_id).first()
-        if horse is None:
-            return None
-        return {
-            "horse_id": horse.id,
-            "name": horse.name,
-            "sire": horse.sire,
-            "dam_sire": horse.dam_sire,
-        }
 
 
 @dataclass(frozen=True)
@@ -169,52 +73,11 @@ class FukushoSummary:
     race_results: tuple[FukushoRaceResult, ...]
 
 
-class FukushoSimulator:
+class FukushoSimulator(BaseSimulator[FukushoRaceResult, FukushoSummary]):
     """複勝馬券シミュレータ
 
     予測モデルの出力を使用して、複勝馬券の購入戦略をシミュレートする。
     """
-
-    def __init__(self, db_path: str) -> None:
-        """シミュレータを初期化
-
-        Args:
-            db_path: データベースファイルのパス
-        """
-        self._db_path = db_path
-
-    def _get_session(self) -> Session:
-        """DBセッションを取得
-
-        Returns:
-            Session: SQLAlchemyセッション
-        """
-        engine = create_engine(f"sqlite:///{self._db_path}")
-        return Session(engine)
-
-    def _get_races_in_period(
-        self, session: Session, from_date: str, to_date: str, venues: list[str] | None
-    ) -> list[Race]:
-        """期間内のレースを取得
-
-        Args:
-            session: DBセッション
-            from_date: 開始日 (YYYY-MM-DD形式)
-            to_date: 終了日 (YYYY-MM-DD形式)
-            venues: 対象会場リスト（Noneの場合は全会場）
-
-        Returns:
-            list[Race]: 対象レースのリスト
-        """
-        from_dt = datetime.strptime(from_date, "%Y-%m-%d").date()
-        to_dt = datetime.strptime(to_date, "%Y-%m-%d").date()
-
-        stmt = select(Race).where(Race.date >= from_dt, Race.date <= to_dt)
-        if venues:
-            stmt = stmt.where(Race.course.in_(venues))
-        stmt = stmt.order_by(Race.date, Race.race_number)
-
-        return list(session.execute(stmt).scalars().all())
 
     def simulate_race(self, race_id: str, top_n: int = 3, model_path: str | None = None) -> FukushoRaceResult:
         """1レースの複勝シミュレーションを実行
@@ -249,7 +112,7 @@ class FukushoSimulator:
             shutuba_data = self._build_shutuba_from_race_results(race, results)
 
             # 3. PredictionServiceで予測を実行
-            repository = _BacktestRaceResultRepository(session)
+            repository = SQLAlchemyRaceResultRepository(session)
             prediction_service = PredictionService(repository=repository, model_path=model_path)
             predictions = prediction_service.predict_from_shutuba(shutuba_data)
 
@@ -292,42 +155,22 @@ class FukushoSimulator:
             payout_total=payout_total,
         )
 
-    def simulate_period(
-        self,
-        from_date: str,
-        to_date: str,
-        venues: list[str] | None = None,
-        top_n: int = 3,
-        model_path: str | None = None,
+    def _build_summary(
+        self, period_from: str, period_to: str, race_results: list[FukushoRaceResult]
     ) -> FukushoSummary:
-        """期間シミュレーションを実行
+        """期間サマリーを構築
 
         Args:
-            from_date: 開始日 (YYYY-MM-DD形式)
-            to_date: 終了日 (YYYY-MM-DD形式)
-            venues: 対象会場リスト（Noneの場合は全会場）
-            top_n: 購入する上位馬の数
-            model_path: MLモデルファイルパス（Noneの場合はファクタースコアのみ使用）
+            period_from: 期間開始日
+            period_to: 期間終了日
+            race_results: レース別結果のリスト
 
         Returns:
             FukushoSummary: 期間サマリー
         """
-        race_results = []
-
-        with self._get_session() as session:
-            races = self._get_races_in_period(session, from_date, to_date, venues)
-
-        for race in races:
-            try:
-                result = self.simulate_race(race.id, top_n, model_path=model_path)
-                race_results.append(result)
-            except Exception:
-                # レース取得エラーはスキップ
-                continue
-
-        # サマリー計算
         total_races = len(race_results)
-        total_bets = total_races * top_n
+        # 各レースのtop_nを取得（race_results[0].top_n_predictionsの長さ）
+        total_bets = sum(len(r.top_n_predictions) for r in race_results)
         total_hits = sum(len(r.hits) for r in race_results)
         total_investment = sum(r.investment for r in race_results)
         total_payout = sum(r.payout_total for r in race_results)
@@ -336,8 +179,8 @@ class FukushoSimulator:
         return_rate = total_payout / total_investment if total_investment > 0 else 0.0
 
         return FukushoSummary(
-            period_from=from_date,
-            period_to=to_date,
+            period_from=period_from,
+            period_to=period_to,
             total_races=total_races,
             total_bets=total_bets,
             total_hits=total_hits,
@@ -346,48 +189,4 @@ class FukushoSimulator:
             total_payout=total_payout,
             return_rate=return_rate,
             race_results=tuple(race_results),
-        )
-
-    def _build_shutuba_from_race_results(
-        self, race: Race, results: list[RaceResult]
-    ) -> ShutubaData:
-        """RaceResultのリストからShutubaDataを構築する
-
-        Args:
-            race: Raceオブジェクト
-            results: RaceResultのリスト
-
-        Returns:
-            ShutubaData: 出馬表データ
-        """
-        entries = []
-        for result in results:
-            # horseリレーションシップから馬名を取得
-            horse_name = result.horse.name if result.horse else ""
-            # jockeyリレーションシップから騎手名を取得
-            jockey_name = result.jockey.name if result.jockey else ""
-
-            entry = RaceEntry(
-                horse_id=result.horse_id,
-                horse_name=horse_name,
-                horse_number=result.horse_number,
-                bracket_number=result.bracket_number,
-                jockey_id=result.jockey_id,
-                jockey_name=jockey_name,
-                impost=result.impost if result.impost is not None else 0.0,
-                sex=result.sex,
-                age=result.age,
-            )
-            entries.append(entry)
-
-        return ShutubaData(
-            race_id=race.id,
-            race_name=race.name,
-            race_number=race.race_number,
-            course=race.course,
-            distance=race.distance,
-            surface=race.surface,
-            date=race.date.strftime("%Y-%m-%d"),
-            entries=tuple(entries),
-            track_condition=race.track_condition,
         )

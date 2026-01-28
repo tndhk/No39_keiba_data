@@ -3,6 +3,8 @@
 import numpy as np
 from typing import Any
 
+from keiba.config.weights import FACTOR_NAMES
+
 
 class FeatureBuilder:
     """ML予測用の特徴量を生成するクラス
@@ -12,16 +14,6 @@ class FeatureBuilder:
     - 生データ由来: 8つ
     - 派生特徴量: 4つ
     """
-
-    FACTOR_NAMES = [
-        "past_results",
-        "course_fit",
-        "time_index",
-        "last_3f",
-        "popularity",
-        "pedigree",
-        "running_style",
-    ]
 
     RAW_DATA_NAMES = [
         "odds",
@@ -69,7 +61,7 @@ class FeatureBuilder:
         features = {}
 
         # 分析ファクター由来（7つ）
-        for name in self.FACTOR_NAMES:
+        for name in FACTOR_NAMES:
             score = factor_scores.get(name)
             features[f"{name}_score"] = (
                 score if score is not None else self.MISSING_VALUE
@@ -79,10 +71,6 @@ class FeatureBuilder:
         for name in self.RAW_DATA_NAMES:
             if name == "field_size":
                 features[name] = field_size
-            elif name == "popularity":
-                # popularityは生データ名とファクター名が重複するので区別
-                value = race_result.get(name)
-                features[name] = value if value is not None else self.MISSING_VALUE
             else:
                 value = race_result.get(name)
                 features[name] = value if value is not None else self.MISSING_VALUE
@@ -103,7 +91,7 @@ class FeatureBuilder:
         names = []
 
         # 分析ファクター由来
-        for name in self.FACTOR_NAMES:
+        for name in FACTOR_NAMES:
             names.append(f"{name}_score")
 
         # 生データ由来

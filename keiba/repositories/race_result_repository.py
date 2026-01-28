@@ -1,6 +1,8 @@
 """過去成績リポジトリ"""
 
-from keiba.cli.utils.date_parser import parse_race_date
+import re
+from datetime import datetime
+
 from keiba.models import Horse, Race, RaceResult
 
 
@@ -15,6 +17,34 @@ class SQLAlchemyRaceResultRepository:
         """
         self.session = session
 
+    def _parse_date(self, date_str: str):
+        """日付文字列を解析（マルチフォーマット対応）
+
+        Args:
+            date_str: 日付文字列（ISO形式 "YYYY-MM-DD" または 日本語形式 "YYYY年M月D日"）
+
+        Returns:
+            解析された日付オブジェクト
+
+        Raises:
+            ValueError: 日付の解析に失敗した場合
+        """
+        # ISO形式を試行
+        try:
+            return datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            pass
+
+        # 日本語形式を試行
+        match = re.match(r"(\d{4})年(\d{1,2})月(\d{1,2})日", date_str)
+        if match:
+            year = int(match.group(1))
+            month = int(match.group(2))
+            day = int(match.group(3))
+            return datetime(year, month, day).date()
+
+        raise ValueError(f"Invalid date format: {date_str}")
+
     def get_past_results(
         self, horse_id: str, before_date: str, limit: int = 20
     ) -> list[dict]:
@@ -22,7 +52,7 @@ class SQLAlchemyRaceResultRepository:
 
         Args:
             horse_id: 馬ID
-            before_date: この日付より前の成績を取得（YYYY年M月D日形式）
+            before_date: この日付より前の成績を取得（ISO形式 "YYYY-MM-DD" または 日本語形式 "YYYY年M月D日"）
             limit: 最大取得件数
 
         Returns:
@@ -30,7 +60,7 @@ class SQLAlchemyRaceResultRepository:
         """
         # 日付を解析
         try:
-            target_date = parse_race_date(before_date)
+            target_date = self._parse_date(before_date)
         except ValueError:
             # 解析失敗時は空リストを返す
             return []
@@ -68,6 +98,7 @@ class SQLAlchemyRaceResultRepository:
                     "popularity": race_result.popularity,
                     "passing_order": race_result.passing_order,
                     "course": race_info.course,
+                    "race_name": race_info.name,
                 }
             )
 

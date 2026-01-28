@@ -16,3 +16,6 @@ FACTOR_WEIGHTS = {
     "pedigree": 0.10,  # 血統: 10%（未測定のため低めに設定）
     "running_style": 0.09,  # 脚質: 9%（相関-0.073、予測力が低い）
 }
+
+# FACTOR_WEIGHTSのキーをイミュータブルなタプルとして提供
+FACTOR_NAMES = tuple(FACTOR_WEIGHTS.keys())

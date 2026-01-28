@@ -13,11 +13,11 @@ from keiba.cli import main
 
 
 class TestResolveDateRange:
-    """_resolve_date_range ヘルパー関数のテスト"""
+    """resolve_date_range ヘルパー関数のテスト"""
 
     def test_last_week_flag_returns_last_week(self):
         """--last-week フラグが先週の月曜〜日曜を返す"""
-        from keiba.cli.commands.backtest import _resolve_date_range
+        from keiba.cli.utils.date_range import resolve_date_range
 
         # テスト実行時の日付から先週を計算
         today = date.today()
@@ -26,14 +26,14 @@ class TestResolveDateRange:
         expected_from = (this_monday - timedelta(days=7)).strftime("%Y-%m-%d")
         expected_to = (this_monday - timedelta(days=1)).strftime("%Y-%m-%d")
 
-        from_date, to_date = _resolve_date_range(None, None, last_week=True)
+        from_date, to_date = resolve_date_range(None, None, last_week=True)
 
         assert from_date == expected_from
         assert to_date == expected_to
 
     def test_no_args_returns_last_week(self):
         """引数なしの場合も先週を返す"""
-        from keiba.cli.commands.backtest import _resolve_date_range
+        from keiba.cli.utils.date_range import resolve_date_range
 
         today = date.today()
         days_since_monday = today.weekday()
@@ -41,16 +41,16 @@ class TestResolveDateRange:
         expected_from = (this_monday - timedelta(days=7)).strftime("%Y-%m-%d")
         expected_to = (this_monday - timedelta(days=1)).strftime("%Y-%m-%d")
 
-        from_date, to_date = _resolve_date_range(None, None, last_week=False)
+        from_date, to_date = resolve_date_range(None, None, last_week=False)
 
         assert from_date == expected_from
         assert to_date == expected_to
 
     def test_explicit_dates_returned_as_is(self):
         """--from と --to を両方指定すると、その日付がそのまま返る"""
-        from keiba.cli.commands.backtest import _resolve_date_range
+        from keiba.cli.utils.date_range import resolve_date_range
 
-        from_date, to_date = _resolve_date_range(
+        from_date, to_date = resolve_date_range(
             "2026-01-01", "2026-01-31", last_week=False
         )
 
@@ -59,31 +59,31 @@ class TestResolveDateRange:
 
     def test_only_from_date_raises_system_exit(self):
         """--from のみ指定するとエラー"""
-        from keiba.cli.commands.backtest import _resolve_date_range
+        from keiba.cli.utils.date_range import resolve_date_range
 
         with pytest.raises(SystemExit):
-            _resolve_date_range("2026-01-01", None, last_week=False)
+            resolve_date_range("2026-01-01", None, last_week=False)
 
     def test_only_to_date_raises_system_exit(self):
         """--to のみ指定するとエラー"""
-        from keiba.cli.commands.backtest import _resolve_date_range
+        from keiba.cli.utils.date_range import resolve_date_range
 
         with pytest.raises(SystemExit):
-            _resolve_date_range(None, "2026-01-31", last_week=False)
+            resolve_date_range(None, "2026-01-31", last_week=False)
 
     def test_invalid_date_format_raises_system_exit(self):
         """不正な日付形式はエラー"""
-        from keiba.cli.commands.backtest import _resolve_date_range
+        from keiba.cli.utils.date_range import resolve_date_range
 
         with pytest.raises(SystemExit):
-            _resolve_date_range("01-01-2026", "2026-01-31", last_week=False)
+            resolve_date_range("01-01-2026", "2026-01-31", last_week=False)
 
     def test_invalid_to_date_format_raises_system_exit(self):
         """不正なto日付形式はエラー"""
-        from keiba.cli.commands.backtest import _resolve_date_range
+        from keiba.cli.utils.date_range import resolve_date_range
 
         with pytest.raises(SystemExit):
-            _resolve_date_range("2026-01-01", "invalid", last_week=False)
+            resolve_date_range("2026-01-01", "invalid", last_week=False)
 
 
 class TestBacktestAllCommand:
@@ -393,11 +393,11 @@ class TestBacktestAllCommand:
 
 
 class TestFormatResultsTable:
-    """_format_results_table ヘルパー関数のテスト"""
+    """format_results_table ヘルパー関数のテスト"""
 
     def test_generates_table_with_correct_structure(self):
         """正しいテーブル構造が生成される"""
-        from keiba.cli.commands.backtest import _format_results_table
+        from keiba.cli.utils.table_formatter import format_results_table
 
         # モックサマリを作成
         fukusho = MagicMock()
@@ -428,7 +428,7 @@ class TestFormatResultsTable:
         sanrenpuku.total_payout = 22400
         sanrenpuku.return_rate = 4.667
 
-        table = _format_results_table(fukusho, tansho, umaren, sanrenpuku)
+        table = format_results_table(fukusho, tansho, umaren, sanrenpuku)
 
         # テーブルに全券種が含まれる
         assert "複勝" in table
@@ -448,7 +448,7 @@ class TestFormatResultsTable:
 
     def test_handles_large_numbers(self):
         """大きな数値でも正しくフォーマットされる"""
-        from keiba.cli.commands.backtest import _format_results_table
+        from keiba.cli.utils.table_formatter import format_results_table
 
         # 大きな数値のモックサマリ
         fukusho = MagicMock()
@@ -479,7 +479,7 @@ class TestFormatResultsTable:
         sanrenpuku.total_payout = 5000000
         sanrenpuku.return_rate = 50.0
 
-        table = _format_results_table(fukusho, tansho, umaren, sanrenpuku)
+        table = format_results_table(fukusho, tansho, umaren, sanrenpuku)
 
         # 大きな数値が表示される
         assert "1,000,000" in table or "1000000" in table

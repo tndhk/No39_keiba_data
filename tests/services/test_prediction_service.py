@@ -515,7 +515,7 @@ class TestPredictFromShutubaDebutRaceSkip:
     """新馬戦スキップのテスト"""
 
     def test_predict_from_shutuba_returns_empty_list_for_debut_race(self):
-        """新馬戦の場合は空リストを返す"""
+        """新馬戦の場合は空タプルを返す"""
         # Arrange: 新馬戦の出馬表データ
         entries = (
             create_test_entry("horse_001", "テスト馬", 1),
@@ -540,8 +540,8 @@ class TestPredictFromShutubaDebutRaceSkip:
         # Act
         result = service.predict_from_shutuba(shutuba)
 
-        # Assert: 新馬戦なので空リストを返す
-        assert result == []
+        # Assert: 新馬戦なので空タプルを返す
+        assert result == ()
 
         # リポジトリは呼び出されないこと（早期リターンのため）
         mock_repo.get_past_results.assert_not_called()
@@ -811,10 +811,8 @@ class TestDaysSinceLastRace:
     def test_days_since_last_race_calculated_correctly(self):
         """days_since_last_raceが正しく計算されること"""
         # Arrange
-        from datetime import datetime, timedelta
-
-        mock_repo = Mock()
-        service = PredictionService(repository=mock_repo)
+        from datetime import datetime, timedelta, date
+        from keiba.services.past_stats_calculator import calculate_past_stats
 
         # テストデータ: 最新レースが20日前（2024年12月12日）
         race_date = datetime(2025, 1, 1)
@@ -833,8 +831,8 @@ class TestDaysSinceLastRace:
         ]
 
         # Act
-        past_stats = service._calculate_past_stats(
-            past_results, "horse_001", "2025年1月1日"
+        past_stats = calculate_past_stats(
+            past_results, date(2025, 1, 1), horse_id="horse_001"
         )
 
         # Assert

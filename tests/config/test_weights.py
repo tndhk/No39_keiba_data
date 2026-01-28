@@ -3,6 +3,34 @@
 import pytest
 
 
+class TestFactorNames:
+    """FACTOR_NAMES の定数テスト"""
+
+    def test_factor_names_matches_weights_keys(self):
+        """FACTOR_NAMES が FACTOR_WEIGHTS のキーと一致する"""
+        from keiba.config.weights import FACTOR_NAMES, FACTOR_WEIGHTS
+
+        assert set(FACTOR_NAMES) == set(FACTOR_WEIGHTS.keys())
+
+    def test_factor_names_is_tuple(self):
+        """FACTOR_NAMES がタプルである（イミュータブル）"""
+        from keiba.config.weights import FACTOR_NAMES
+
+        assert isinstance(FACTOR_NAMES, tuple)
+
+    def test_factor_names_length(self):
+        """FACTOR_NAMES が7つの要素を持つ"""
+        from keiba.config.weights import FACTOR_NAMES
+
+        assert len(FACTOR_NAMES) == 7
+
+    def test_factor_names_order(self):
+        """FACTOR_NAMES が FACTOR_WEIGHTS のキー順序と一致する（Python 3.7+辞書順序保証）"""
+        from keiba.config.weights import FACTOR_NAMES, FACTOR_WEIGHTS
+
+        assert FACTOR_NAMES == tuple(FACTOR_WEIGHTS.keys())
+
+
 class TestMLWeightAlpha:
     """ML_WEIGHT_ALPHA の設定テスト"""
 

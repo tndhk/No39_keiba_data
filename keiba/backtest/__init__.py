@@ -4,6 +4,7 @@ ML予測と7ファクター予測の精度検証を行う
 """
 
 from keiba.backtest.backtester import BacktestEngine, RetrainInterval
+from keiba.backtest.base_simulator import BaseSimulator
 from keiba.backtest.fukusho_simulator import (
     FukushoRaceResult,
     FukushoSimulator,
@@ -38,6 +39,7 @@ __all__ = [
     "RaceBacktestResult",
     "MetricsCalculator",
     "BacktestReporter",
+    "BaseSimulator",
     "FukushoRaceResult",
     "FukushoSimulator",
     "FukushoSummary",

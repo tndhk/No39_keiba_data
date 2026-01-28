@@ -1,8 +1,8 @@
-"""Tests for _BacktestRaceResultRepository"""
+"""Tests for SQLAlchemyRaceResultRepository (backtest usage)"""
 
 import pytest
 from datetime import date
-from keiba.backtest.fukusho_simulator import _BacktestRaceResultRepository
+from keiba.repositories.race_result_repository import SQLAlchemyRaceResultRepository
 from keiba.models import Horse, Race, RaceResult, Jockey, Trainer
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -72,7 +72,7 @@ def test_get_past_results_includes_race_name(db_session):
     db_session.commit()
 
     # Act: リポジトリを使って過去成績を取得
-    repository = _BacktestRaceResultRepository(db_session)
+    repository = SQLAlchemyRaceResultRepository(db_session)
     results = repository.get_past_results(
         horse_id="horse_001", before_date="2025-01-10", limit=20
     )
@@ -105,8 +105,8 @@ def test_get_horse_info_returns_pedigree(db_session):
     db_session.add(horse)
     db_session.commit()
 
-    # Act: リポジトリを使って馬の情報を取得（メソッドが存在しないため失敗するはず）
-    repository = _BacktestRaceResultRepository(db_session)
+    # Act: リポジトリを使って馬の情報を取得
+    repository = SQLAlchemyRaceResultRepository(db_session)
     horse_info = repository.get_horse_info("horse_002")
 
     # Assert: 血統情報が含まれることを検証
@@ -120,7 +120,7 @@ def test_get_horse_info_returns_pedigree(db_session):
 def test_get_horse_info_returns_none_for_nonexistent_horse(db_session):
     """get_horse_info()が存在しない馬に対してNoneを返すことを検証"""
     # Act: 存在しない馬IDで取得
-    repository = _BacktestRaceResultRepository(db_session)
+    repository = SQLAlchemyRaceResultRepository(db_session)
     horse_info = repository.get_horse_info("nonexistent_horse")
 
     # Assert: Noneが返されることを検証

@@ -98,10 +98,10 @@ class TestParseRaceDateInvalid:
         with pytest.raises(ValueError, match="Invalid date string"):
             parse_race_date("2024/1/1")
 
-    def test_wrong_format_hyphen(self):
-        """ハイフン区切りの日付でValueErrorが発生する"""
-        with pytest.raises(ValueError, match="Invalid date string"):
-            parse_race_date("2024-01-01")
+    def test_iso_format_hyphen(self):
+        """ハイフン区切りのISO形式日付を変換できる"""
+        result = parse_race_date("2024-01-01")
+        assert result == date(2024, 1, 1)
 
     def test_wrong_format_no_kanji(self):
         """漢字なしの日付でValueErrorが発生する"""

@@ -3,6 +3,7 @@
 from datetime import date
 
 from keiba.models import Horse, Race, RaceResult
+from keiba.services.past_stats_calculator import calculate_past_stats
 
 
 def get_horse_past_results(session, horse_id: str) -> list[dict]:
@@ -53,44 +54,6 @@ def get_horse_past_results(session, horse_id: str) -> list[dict]:
         )
 
     return results
-
-
-def calculate_past_stats(past_results: list[dict], current_date: date) -> dict:
-    """派生特徴量を計算する
-
-    Args:
-        past_results: 過去成績リスト
-        current_date: 現在のレース日
-
-    Returns:
-        派生特徴量の辞書
-    """
-    if not past_results:
-        return {
-            "win_rate": None,
-            "top3_rate": None,
-            "avg_finish_position": None,
-            "days_since_last_race": None,
-        }
-
-    total = len(past_results)
-    wins = sum(1 for r in past_results if r.get("finish_position") == 1)
-    top3 = sum(1 for r in past_results if r.get("finish_position", 99) <= 3)
-    positions = [r.get("finish_position", 0) for r in past_results if r.get("finish_position", 0) > 0]
-
-    days_since = None
-    if past_results and past_results[0].get("race_date"):
-        last_date = past_results[0]["race_date"]
-        if hasattr(last_date, "date"):
-            last_date = last_date.date()
-        days_since = (current_date - last_date).days
-
-    return {
-        "win_rate": wins / total if total > 0 else None,
-        "top3_rate": top3 / total if total > 0 else None,
-        "avg_finish_position": sum(positions) / len(positions) if positions else None,
-        "days_since_last_race": days_since,
-    }
 
 
 def build_training_data(session, target_date: date) -> tuple[list[dict], list[int]]:

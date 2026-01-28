@@ -4,6 +4,7 @@ import math
 from dataclasses import dataclass
 from typing import Protocol
 
+from keiba.services.past_stats_calculator import calculate_past_stats
 from keiba.utils.grade_extractor import extract_grade
 from keiba.analyzers.factors import (
     PastResultsFactor,
@@ -15,7 +16,7 @@ from keiba.analyzers.factors import (
     RunningStyleFactor,
 )
 from keiba.analyzers.score_calculator import ScoreCalculator
-from keiba.config.weights import ML_WEIGHT_ALPHA
+from keiba.config.weights import ML_WEIGHT_ALPHA, FACTOR_NAMES
 from keiba.models.entry import ShutubaData, RaceEntry
 
 
@@ -45,16 +46,6 @@ class RaceResultRepository(Protocol):
 
 class PredictionService:
     """出馬表データから予測を実行するサービス"""
-
-    FACTOR_NAMES = [
-        "past_results",
-        "course_fit",
-        "time_index",
-        "last_3f",
-        "popularity",
-        "pedigree",
-        "running_style",
-    ]
 
     def __init__(
         self, repository: RaceResultRepository, model_path: str | None = None
@@ -100,65 +91,37 @@ class PredictionService:
             # モデルロード失敗時はNoneのまま
             self._model = None
 
-    def predict_from_shutuba(self, shutuba_data: ShutubaData) -> list[PredictionResult]:
+    def predict_from_shutuba(self, shutuba_data: ShutubaData) -> tuple[PredictionResult, ...]:
         """出馬表データから予測を実行
 
         Args:
             shutuba_data: 出馬表データ
 
         Returns:
-            予測結果リスト（ML確率降順でソート）
-            新馬戦の場合は空リストを返す
+            予測結果タプル（ML確率降順でソート）
+            新馬戦の場合は空タプルを返す
         """
         # 新馬戦の場合は予測をスキップ
         if self.is_debut_race(shutuba_data.race_name):
-            return []
+            return ()
 
         race_date = shutuba_data.date
         race_info = {
             "course": shutuba_data.course,
             "distance": shutuba_data.distance,
             "surface": shutuba_data.surface,
+            "date": shutuba_data.date,
         }
 
-        predictions = []
-
-        for entry in shutuba_data.entries:
-            # データリーク防止: レース日より前の過去成績のみ取得
-            past_results = self._repository.get_past_results(
-                horse_id=entry.horse_id, before_date=race_date, limit=20
-            )
-
-            # 7因子スコアを計算
-            factor_scores = self._calculate_factor_scores(
-                entry=entry, past_results=past_results, race_info=race_info
-            )
-
-            # 合計スコアを計算
-            total_score = self._score_calculator.calculate_total(factor_scores)
-
-            # ML確率を計算（モデルがない場合は0.0）
-            ml_probability = self._calculate_ml_probability(
-                entry=entry,
-                past_results=past_results,
-                factor_scores=factor_scores,
-                race_info=race_info,
-                field_size=len(shutuba_data.entries),
-            )
-
-            predictions.append(
-                {
-                    "horse_number": entry.horse_number,
-                    "horse_name": entry.horse_name,
-                    "horse_id": entry.horse_id,
-                    "ml_probability": ml_probability,
-                    "factor_scores": factor_scores,
-                    "total_score": total_score,
-                }
-            )
+        # 予測データを生成（イミュータブル）
+        predictions = [
+            self._create_prediction_entry(entry, race_date, race_info, len(shutuba_data.entries))
+            for entry in shutuba_data.entries
+        ]
 
         # ML確率降順でソート（同値の場合はtotal_score降順）
-        predictions.sort(
+        predictions = sorted(
+            predictions,
             key=lambda x: (x["ml_probability"], x["total_score"] or 0.0),
             reverse=True,
         )
@@ -168,37 +131,87 @@ class PredictionService:
             (p["ml_probability"] for p in predictions), default=0.0
         )
 
-        # 各予測の複合スコアを計算
-        for pred in predictions:
-            pred["combined_score"] = self._calculate_combined_score(
-                ml_probability=pred["ml_probability"],
-                max_ml_probability=max_ml_probability,
-                total_score=pred["total_score"],
-            )
+        # 各予測に複合スコアを追加（新しい辞書を生成）
+        predictions_with_combined = [
+            {
+                **pred,
+                "combined_score": self._calculate_combined_score(
+                    ml_probability=pred["ml_probability"],
+                    max_ml_probability=max_ml_probability,
+                    total_score=pred["total_score"],
+                ),
+            }
+            for pred in predictions
+        ]
 
         # 複合スコア降順で再ソート
-        predictions.sort(
+        predictions_sorted = sorted(
+            predictions_with_combined,
             key=lambda x: (x["combined_score"] or 0.0, x["ml_probability"]),
             reverse=True,
         )
 
-        # ランキングを付与してPredictionResultに変換
-        results = []
-        for rank, pred in enumerate(predictions, 1):
-            results.append(
-                PredictionResult(
-                    horse_number=pred["horse_number"],
-                    horse_name=pred["horse_name"],
-                    horse_id=pred["horse_id"],
-                    ml_probability=pred["ml_probability"],
-                    factor_scores=pred["factor_scores"],
-                    total_score=pred["total_score"],
-                    combined_score=pred["combined_score"],
-                    rank=rank,
-                )
+        # ランキングを付与してPredictionResultに変換（イミュータブルタプル）
+        results = tuple(
+            PredictionResult(
+                horse_number=pred["horse_number"],
+                horse_name=pred["horse_name"],
+                horse_id=pred["horse_id"],
+                ml_probability=pred["ml_probability"],
+                factor_scores=pred["factor_scores"],
+                total_score=pred["total_score"],
+                combined_score=pred["combined_score"],
+                rank=rank,
             )
+            for rank, pred in enumerate(predictions_sorted, 1)
+        )
 
         return results
+
+    def _create_prediction_entry(
+        self, entry: RaceEntry, race_date: str, race_info: dict, field_size: int
+    ) -> dict:
+        """予測エントリーを生成（イミュータブル）
+
+        Args:
+            entry: 出走馬エントリー
+            race_date: レース日
+            race_info: レース情報
+            field_size: 出走頭数
+
+        Returns:
+            予測エントリー辞書
+        """
+        # データリーク防止: レース日より前の過去成績のみ取得
+        past_results = self._repository.get_past_results(
+            horse_id=entry.horse_id, before_date=race_date, limit=20
+        )
+
+        # 7因子スコアを計算
+        factor_scores = self._calculate_factor_scores(
+            entry=entry, past_results=past_results, race_info=race_info
+        )
+
+        # 合計スコアを計算
+        total_score = self._score_calculator.calculate_total(factor_scores)
+
+        # ML確率を計算（モデルがない場合は0.0）
+        ml_probability = self._calculate_ml_probability(
+            entry=entry,
+            past_results=past_results,
+            factor_scores=factor_scores,
+            race_info=race_info,
+            field_size=field_size,
+        )
+
+        return {
+            "horse_number": entry.horse_number,
+            "horse_name": entry.horse_name,
+            "horse_id": entry.horse_id,
+            "ml_probability": ml_probability,
+            "factor_scores": factor_scores,
+            "total_score": total_score,
+        }
 
     def _calculate_factor_scores(
         self, entry: RaceEntry, past_results: list, race_info: dict
@@ -217,7 +230,7 @@ class PredictionService:
 
         # 過去成績がない場合は全てNone
         if not past_results:
-            for factor_name in self.FACTOR_NAMES:
+            for factor_name in FACTOR_NAMES:
                 scores[factor_name] = None
             return scores
 
@@ -322,14 +335,16 @@ class PredictionService:
 
         # 特徴量を構築してモデルで予測
         try:
+            from keiba.cli.utils.date_parser import parse_race_date
             from keiba.ml.feature_builder import FeatureBuilder
             import numpy as np
 
             feature_builder = FeatureBuilder()
 
             # 派生特徴量を計算
-            past_stats = self._calculate_past_stats(
-                past_results, entry.horse_id, race_info["date"]
+            current_date = parse_race_date(race_info["date"])
+            past_stats = calculate_past_stats(
+                past_results, current_date, horse_id=entry.horse_id
             )
 
             # 最新の過去成績データ
@@ -381,82 +396,6 @@ class PredictionService:
             + (1 - ML_WEIGHT_ALPHA) * total_score
         )
         return round(combined, 1)
-
-    def _calculate_past_stats(
-        self, past_results: list, horse_id: str, race_date: str
-    ) -> dict[str, float | None]:
-        """過去成績から派生統計を計算
-
-        Args:
-            past_results: 過去成績リスト
-            horse_id: 馬ID
-            race_date: レース日（YYYY年M月D日形式）
-
-        Returns:
-            派生統計の辞書
-        """
-        if not past_results:
-            return {
-                "win_rate": None,
-                "top3_rate": None,
-                "avg_finish_position": None,
-                "days_since_last_race": None,
-            }
-
-        # 対象馬の成績をフィルタ
-        horse_results = [r for r in past_results if r.get("horse_id") == horse_id]
-        if not horse_results:
-            horse_results = past_results  # フィルタで空になった場合は全てを使用
-
-        total_races = len(horse_results)
-        wins = sum(1 for r in horse_results if r.get("finish_position") == 1)
-        top3 = sum(1 for r in horse_results if 1 <= (r.get("finish_position") or 99) <= 3)
-        finish_positions = [
-            r.get("finish_position")
-            for r in horse_results
-            if r.get("finish_position") is not None
-        ]
-
-        win_rate = wins / total_races if total_races > 0 else None
-        top3_rate = top3 / total_races if total_races > 0 else None
-        avg_finish = (
-            sum(finish_positions) / len(finish_positions) if finish_positions else None
-        )
-
-        # 最新レースからの経過日数を計算
-        days_since_last_race = None
-        if horse_results:
-            from keiba.cli.utils.date_parser import parse_race_date
-            from datetime import datetime
-
-            try:
-                # レース日を解析
-                target_date = parse_race_date(race_date)
-
-                # 最新レースの日付（horse_resultsは日付降順）
-                latest_race_date_str = horse_results[0].get("race_date")
-                if latest_race_date_str:
-                    # race_dateはYYYY-MM-DD形式の文字列
-                    if isinstance(latest_race_date_str, str):
-                        latest_race_date = datetime.strptime(
-                            latest_race_date_str, "%Y-%m-%d"
-                        ).date()
-                    else:
-                        # datetimeオブジェクトの場合
-                        latest_race_date = latest_race_date_str
-
-                    # 経過日数を計算
-                    days_since_last_race = (target_date - latest_race_date).days
-            except Exception:
-                # 日付解析失敗時はNone
-                days_since_last_race = None
-
-        return {
-            "win_rate": win_rate,
-            "top3_rate": top3_rate,
-            "avg_finish_position": avg_finish,
-            "days_since_last_race": days_since_last_race,
-        }
 
     @staticmethod
     def is_debut_race(race_name: str) -> bool:
