@@ -100,7 +100,8 @@ def scrape(year: int, month: int, db: str, jra_only: bool):
 @click.option("--limit", default=100, type=int, help="取得する馬の数（デフォルト: 100）")
 @click.option("--date", default=None, type=str, help="開催日（YYYY-MM-DD形式）")
 @click.option("--venue", default=None, type=str, help="競馬場名（例: 中山）")
-def scrape_horses(db: str, limit: int, date: str | None, venue: str | None):
+@click.option("--verbose", "-v", is_flag=True, default=False, help="詳細出力")
+def scrape_horses(db: str, limit: int, date: str | None, venue: str | None, verbose: bool):
     """詳細未取得の馬情報を収集"""
     click.echo(f"馬詳細データ収集開始")
     click.echo(f"データベース: {db}")
@@ -123,6 +124,7 @@ def scrape_horses(db: str, limit: int, date: str | None, venue: str | None):
     # 統計情報
     total_processed = 0
     updated_horses = 0
+    no_update_count = 0
     errors = 0
 
     with get_session(engine) as session:
@@ -157,9 +159,22 @@ def scrape_horses(db: str, limit: int, date: str | None, venue: str | None):
 
             try:
                 horse_data = horse_detail_scraper.fetch_horse_detail(horse.id)
-                _update_horse(session, horse, horse_data)
-                updated_horses += 1
-                click.echo(f"    更新完了")
+                field_count = _update_horse(session, horse, horse_data)
+
+                # parse_warnings を表示
+                if horse_data.get("parse_warnings"):
+                    for w in horse_data["parse_warnings"]:
+                        click.echo(f"    警告: {w}")
+
+                if field_count == 0:
+                    click.echo(f"    警告: 更新フィールドなし（パース失敗の可能性）")
+                    no_update_count += 1
+                else:
+                    updated_horses += 1
+                    if verbose:
+                        click.echo(f"    更新: {field_count}フィールド")
+                        if horse_data.get("sire"):
+                            click.echo(f"    血統: {horse_data.get('sire')} / {horse_data.get('dam')} / {horse_data.get('dam_sire')}")
             except Exception as e:
                 errors += 1
                 click.echo(f"    エラー: {e}")
@@ -170,6 +185,7 @@ def scrape_horses(db: str, limit: int, date: str | None, venue: str | None):
     click.echo(f"完了")
     click.echo(f"  処理数: {total_processed}")
     click.echo(f"  更新成功: {updated_horses}")
+    click.echo(f"  更新なし: {no_update_count}")
     click.echo(f"  エラー: {errors}")
 
 
@@ -345,48 +361,69 @@ def _save_race_data(session, race_data: dict) -> None:
         session.add(race_result)
 
 
-def _update_horse(session, horse: Horse, horse_data: dict) -> None:
+def _update_horse(session, horse: Horse, horse_data: dict) -> int:
     """馬情報を更新する
 
     Args:
         session: SQLAlchemyセッション
         horse: 更新対象のHorseオブジェクト
         horse_data: スクレイピングで取得した馬データ
+
+    Returns:
+        更新したフィールド数
     """
+    updated_count = 0
+
     # 基本情報
     if horse_data.get("name"):
         horse.name = horse_data["name"]
+        updated_count += 1
     if horse_data.get("sex"):
         horse.sex = horse_data["sex"]
+        updated_count += 1
     if horse_data.get("birth_year"):
         horse.birth_year = horse_data["birth_year"]
+        updated_count += 1
 
     # 血統情報
     if horse_data.get("sire"):
         horse.sire = horse_data["sire"]
+        updated_count += 1
     if horse_data.get("dam"):
         horse.dam = horse_data["dam"]
+        updated_count += 1
     if horse_data.get("dam_sire"):
         horse.dam_sire = horse_data["dam_sire"]
+        updated_count += 1
 
     # 基本情報
     if horse_data.get("coat_color"):
         horse.coat_color = horse_data["coat_color"]
+        updated_count += 1
     if horse_data.get("birthplace"):
         horse.birthplace = horse_data["birthplace"]
+        updated_count += 1
 
     # 関連ID
     if horse_data.get("trainer_id"):
         horse.trainer_id = horse_data["trainer_id"]
+        updated_count += 1
     if horse_data.get("owner_id"):
         horse.owner_id = horse_data["owner_id"]
+        updated_count += 1
     if horse_data.get("breeder_id"):
         horse.breeder_id = horse_data["breeder_id"]
+        updated_count += 1
 
     # 成績情報
     if horse_data.get("total_races") is not None:
         horse.total_races = horse_data["total_races"]
+        updated_count += 1
     if horse_data.get("total_wins") is not None:
         horse.total_wins = horse_data["total_wins"]
+        updated_count += 1
     if horse_data.get("total_earnings") is not None:
         horse.total_earnings = horse_data["total_earnings"]
+        updated_count += 1
+
+    return updated_count
