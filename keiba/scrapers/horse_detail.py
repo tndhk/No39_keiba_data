@@ -4,11 +4,14 @@ This module provides functionality to scrape horse details including
 pedigree and career information from netkeiba's horse page.
 """
 
+import logging
 import re
 
 from bs4 import BeautifulSoup
 
 from keiba.scrapers.base import BaseScraper
+
+logger = logging.getLogger(__name__)
 
 
 class HorseDetailScraper(BaseScraper):
@@ -40,13 +43,14 @@ class HorseDetailScraper(BaseScraper):
         Returns:
             Dictionary containing horse information.
         """
-        result = {"id": horse_id}
+        result = {"id": horse_id, "parse_warnings": []}
+        warnings = result["parse_warnings"]
 
         # 各セクションをパース
-        profile = self._parse_profile(soup)
+        profile = self._parse_profile(soup, warnings)
         result.update(profile)
 
-        pedigree = self._parse_pedigree(soup)
+        pedigree = self._parse_pedigree(soup, warnings)
         result.update(pedigree)
 
         career = self._parse_career(soup)
@@ -54,11 +58,12 @@ class HorseDetailScraper(BaseScraper):
 
         return result
 
-    def _parse_profile(self, soup: BeautifulSoup) -> dict:
+    def _parse_profile(self, soup: BeautifulSoup, warnings: list) -> dict:
         """Parse basic profile information from the page.
 
         Args:
             soup: BeautifulSoup object of the horse detail page.
+            warnings: List to collect parsing warnings.
 
         Returns:
             Dictionary containing profile information.
@@ -69,10 +74,18 @@ class HorseDetailScraper(BaseScraper):
         h1 = soup.find("h1", class_="horse_title")
         if h1:
             profile["name"] = h1.get_text(strip=True)
+        else:
+            warnings.append("horse_title not found")
+            logger.warning("horse_title h1 element not found")
 
         # プロフィールテーブルを取得
         # db_prof_table または horse_title の後の table を探す
         prof_table = soup.find("table", class_="db_prof_table")
+        if not prof_table:
+            warnings.append("db_prof_table not found")
+            logger.warning("db_prof_table element not found")
+            return profile
+
         if prof_table:
             rows = prof_table.find_all("tr")
             for row in rows:
@@ -144,14 +157,18 @@ class HorseDetailScraper(BaseScraper):
             match = re.match(r"^([牡牝セ])\d+", text)
             if match:
                 profile["sex"] = match.group(1)
+        else:
+            warnings.append("txt_01 not found")
+            logger.warning("txt_01 element not found")
 
         return profile
 
-    def _parse_pedigree(self, soup: BeautifulSoup) -> dict:
+    def _parse_pedigree(self, soup: BeautifulSoup, warnings: list) -> dict:
         """Parse pedigree (blood line) information from the page.
 
         Args:
             soup: BeautifulSoup object of the horse detail page.
+            warnings: List to collect parsing warnings.
 
         Returns:
             Dictionary containing pedigree information.
@@ -161,6 +178,8 @@ class HorseDetailScraper(BaseScraper):
         # 血統テーブルを取得
         blood_table = soup.find("table", class_="blood_table")
         if not blood_table:
+            warnings.append("blood_table not found")
+            logger.warning("blood_table element not found")
             return pedigree
 
         # 血統テーブルの構造:
@@ -177,12 +196,18 @@ class HorseDetailScraper(BaseScraper):
                 if sire_link:
                     pedigree["sire"] = sire_link.get_text(strip=True)
 
+            if "sire" not in pedigree:
+                warnings.append("sire not found")
+
             # 母を取得
             second_row_cells = rows[2].find_all("td") if len(rows) > 2 else []
             if second_row_cells:
                 dam_link = second_row_cells[0].find("a")
                 if dam_link:
                     pedigree["dam"] = dam_link.get_text(strip=True)
+
+            if "dam" not in pedigree:
+                warnings.append("dam not found")
 
             # 母父を取得（母の行の2番目のセル、または3行目）
             if len(rows) > 2:
@@ -199,6 +224,9 @@ class HorseDetailScraper(BaseScraper):
                             ):
                                 pedigree["dam_sire"] = text
                                 break
+
+            if "dam_sire" not in pedigree:
+                warnings.append("dam_sire not found")
 
         return pedigree
 
