@@ -21,6 +21,7 @@ class HorseDetailScraper(BaseScraper):
 
     Attributes:
         BASE_URL: Base URL for netkeiba database pages.
+        PEDIGREE_AJAX_URL: Base URL for AJAX pedigree requests.
 
     Example:
         >>> scraper = HorseDetailScraper()
@@ -32,6 +33,7 @@ class HorseDetailScraper(BaseScraper):
     """
 
     BASE_URL = "https://db.netkeiba.com"
+    PEDIGREE_AJAX_URL = "https://db.netkeiba.com/horse/pedigree"
 
     def parse(self, soup: BeautifulSoup, horse_id: str) -> dict:
         """Parse the horse detail page and extract all information.
@@ -282,6 +284,33 @@ class HorseDetailScraper(BaseScraper):
 
         return career
 
+    def _fetch_pedigree_ajax(self, horse_id: str) -> str | None:
+        """Fetch pedigree HTML fragment via AJAX request.
+
+        Args:
+            horse_id: The horse ID string.
+
+        Returns:
+            HTML fragment string containing pedigree table, or None if failed.
+        """
+        try:
+            url = f"{self.PEDIGREE_AJAX_URL}/{horse_id}"
+            data = self.fetch_json(url, params={"type": "ajax"})
+        except Exception:
+            logger.warning("AJAX pedigree request failed for %s", horse_id)
+            return None
+
+        if data.get("status") != "OK":
+            logger.warning("AJAX pedigree status not OK for %s", horse_id)
+            return None
+
+        html_fragment = data.get("data")
+        if not html_fragment or not isinstance(html_fragment, str):
+            logger.warning("AJAX pedigree data missing for %s", horse_id)
+            return None
+
+        return html_fragment
+
     def _build_url(self, horse_id: str) -> str:
         """Build the horse detail URL for a specific horse ID.
 
@@ -296,6 +325,9 @@ class HorseDetailScraper(BaseScraper):
     def fetch_horse_detail(self, horse_id: str) -> dict:
         """Fetch horse details for a specific horse ID.
 
+        If pedigree data is not available in the initial HTML, attempts
+        to fetch it via AJAX request.
+
         Args:
             horse_id: The horse ID string (e.g., "2019104251").
 
@@ -305,4 +337,25 @@ class HorseDetailScraper(BaseScraper):
         url = self._build_url(horse_id)
         html = self.fetch(url)
         soup = self.get_soup(html)
-        return self.parse(soup, horse_id=horse_id)
+        result = self.parse(soup, horse_id=horse_id)
+
+        # 血統データが初期HTMLにない場合、AJAXで取得
+        has_pedigree = any(key in result for key in ("sire", "dam", "dam_sire"))
+        if not has_pedigree:
+            pedigree_html = self._fetch_pedigree_ajax(horse_id)
+            if pedigree_html:
+                pedigree_soup = self.get_soup(pedigree_html)
+                warnings = [
+                    w for w in result.get("parse_warnings", []) if "blood_table" not in w
+                ]
+                pedigree = self._parse_pedigree(pedigree_soup, warnings)
+                result = {**result, **pedigree, "parse_warnings": warnings}
+            else:
+                warnings = result.get("parse_warnings", [])
+                if not any("ajax" in w.lower() for w in warnings):
+                    result = {
+                        **result,
+                        "parse_warnings": [*warnings, "pedigree AJAX request failed"],
+                    }
+
+        return result
