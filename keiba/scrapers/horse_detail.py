@@ -33,7 +33,7 @@ class HorseDetailScraper(BaseScraper):
     """
 
     BASE_URL = "https://db.netkeiba.com"
-    PEDIGREE_AJAX_URL = "https://db.netkeiba.com/horse/pedigree"
+    PEDIGREE_AJAX_URL = "https://db.netkeiba.com/horse/ajax_horse_pedigree.html"
 
     def parse(self, soup: BeautifulSoup, horse_id: str) -> dict:
         """Parse the horse detail page and extract all information.
@@ -72,8 +72,14 @@ class HorseDetailScraper(BaseScraper):
         """
         profile = {}
 
-        # 馬名を取得（h1タグ）
-        h1 = soup.find("h1", class_="horse_title")
+        # 馬名を取得（h1タグ: 新旧両構造対応）
+        # 新構造: div.horse_title > h1 (classなし)
+        # 旧構造: h1.horse_title
+        horse_title_div = soup.find("div", class_="horse_title")
+        if horse_title_div:
+            h1 = horse_title_div.find("h1")
+        else:
+            h1 = soup.find("h1", class_="horse_title")
         if h1:
             profile["name"] = h1.get_text(strip=True)
         else:
@@ -155,8 +161,8 @@ class HorseDetailScraper(BaseScraper):
         sex_age = soup.find("p", class_="txt_01")
         if sex_age:
             text = sex_age.get_text(strip=True)
-            # "牡5" や "牝4" などのパターン
-            match = re.match(r"^([牡牝セ])\d+", text)
+            # "牡5" や "牝4" や "牝 鹿毛" などのパターン（年齢部分は任意）
+            match = re.match(r"^([牡牝セ])", text)
             if match:
                 profile["sex"] = match.group(1)
         else:
@@ -181,7 +187,7 @@ class HorseDetailScraper(BaseScraper):
         blood_table = soup.find("table", class_="blood_table")
         if not blood_table:
             warnings.append("blood_table not found")
-            logger.warning("blood_table element not found")
+            logger.debug("blood_table element not found")
             return pedigree
 
         # 血統テーブルの構造:
@@ -294,8 +300,10 @@ class HorseDetailScraper(BaseScraper):
             HTML fragment string containing pedigree table, or None if failed.
         """
         try:
-            url = f"{self.PEDIGREE_AJAX_URL}/{horse_id}"
-            data = self.fetch_json(url, params={"type": "ajax"})
+            data = self.fetch_json(
+                self.PEDIGREE_AJAX_URL,
+                params={"input": "UTF-8", "output": "json", "id": horse_id},
+            )
         except Exception:
             logger.warning("AJAX pedigree request failed for %s", horse_id)
             return None
