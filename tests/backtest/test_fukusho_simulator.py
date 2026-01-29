@@ -342,7 +342,15 @@ class TestFukushoSimulator:
     def simulator(self, tmp_path):
         """テスト用シミュレータを作成"""
         db_path = str(tmp_path / "test.db")
-        return FukushoSimulator(db_path)
+        # BaseSimulatorの__init__でRaceDetailScraperが作成されるため、
+        # 事前にモック化する
+        with patch("keiba.backtest.base_simulator.RaceDetailScraper") as mock_scraper_cls:
+            mock_scraper = MagicMock()
+            mock_scraper_cls.return_value = mock_scraper
+            simulator = FukushoSimulator(db_path)
+            # テスト内でモックスクレイパーを上書きできるように保持
+            simulator._scraper = mock_scraper
+        return simulator
 
     def test_simulate_race_accepts_model_path_parameter(self, simulator):
         """simulate_race()がmodel_pathパラメータを受け取れることを検証"""
@@ -421,6 +429,9 @@ class TestFukushoSimulator:
             {"horse_number": 3, "payout": 180},
         ]
 
+        # スクレイパーのモック設定（fixtureで作成済みのモックを使用）
+        simulator._scraper.fetch_payouts.return_value = mock_payouts
+
         with patch.object(simulator, "_get_session") as mock_session_factory:
             mock_session = MagicMock()
             mock_session.__enter__ = MagicMock(return_value=mock_session)
@@ -431,14 +442,7 @@ class TestFukushoSimulator:
             )
             mock_session_factory.return_value = mock_session
 
-            with patch(
-                "keiba.backtest.fukusho_simulator.RaceDetailScraper"
-            ) as mock_scraper_cls:
-                mock_scraper = MagicMock()
-                mock_scraper.fetch_payouts.return_value = mock_payouts
-                mock_scraper_cls.return_value = mock_scraper
-
-                result = simulator.simulate_race("202501050101", top_n=3)
+            result = simulator.simulate_race("202501050101", top_n=3)
 
         assert isinstance(result, FukushoRaceResult)
         assert result.race_id == "202501050101"
@@ -461,6 +465,9 @@ class TestFukushoSimulator:
             {"horse_number": 8, "payout": 450},
         ]
 
+        # スクレイパーのモック設定
+        simulator._scraper.fetch_payouts.return_value = mock_payouts
+
         with patch.object(simulator, "_get_session") as mock_session_factory:
             mock_session = MagicMock()
             mock_session.__enter__ = MagicMock(return_value=mock_session)
@@ -471,14 +478,7 @@ class TestFukushoSimulator:
             )
             mock_session_factory.return_value = mock_session
 
-            with patch(
-                "keiba.backtest.fukusho_simulator.RaceDetailScraper"
-            ) as mock_scraper_cls:
-                mock_scraper = MagicMock()
-                mock_scraper.fetch_payouts.return_value = mock_payouts
-                mock_scraper_cls.return_value = mock_scraper
-
-                result = simulator.simulate_race("202501050102", top_n=3)
+            result = simulator.simulate_race("202501050102", top_n=3)
 
         assert isinstance(result, FukushoRaceResult)
         assert result.investment == 300
@@ -767,7 +767,15 @@ class TestBuildShutubaFromRaceResults:
     def simulator(self, tmp_path):
         """テスト用シミュレータを作成"""
         db_path = str(tmp_path / "test.db")
-        return FukushoSimulator(db_path)
+        # BaseSimulatorの__init__でRaceDetailScraperが作成されるため、
+        # 事前にモック化する
+        with patch("keiba.backtest.base_simulator.RaceDetailScraper") as mock_scraper_cls:
+            mock_scraper = MagicMock()
+            mock_scraper_cls.return_value = mock_scraper
+            simulator = FukushoSimulator(db_path)
+            # テスト内でモックスクレイパーを上書きできるように保持
+            simulator._scraper = mock_scraper
+        return simulator
 
     def test_build_shutuba_from_race_results_success(self, simulator):
         """正常系: RaceResultからShutubaDataを正しく構築できる"""
@@ -957,7 +965,15 @@ class TestSimulateRaceWithPredictionService:
     def simulator(self, tmp_path):
         """テスト用シミュレータを作成"""
         db_path = str(tmp_path / "test.db")
-        return FukushoSimulator(db_path)
+        # BaseSimulatorの__init__でRaceDetailScraperが作成されるため、
+        # 事前にモック化する
+        with patch("keiba.backtest.base_simulator.RaceDetailScraper") as mock_scraper_cls:
+            mock_scraper = MagicMock()
+            mock_scraper_cls.return_value = mock_scraper
+            simulator = FukushoSimulator(db_path)
+            # テスト内でモックスクレイパーを上書きできるように保持
+            simulator._scraper = mock_scraper
+        return simulator
 
     def test_simulate_race_uses_prediction_service(self, simulator):
         """PredictionServiceが呼び出され、予測順でTop-Nが選択されることを確認
@@ -1084,6 +1100,9 @@ class TestSimulateRaceWithPredictionService:
             {"horse_number": 1, "payout": 130},
         ]
 
+        # スクレイパーのモック設定
+        simulator._scraper.fetch_payouts.return_value = mock_payouts
+
         with patch.object(simulator, "_get_session") as mock_session_factory:
             mock_session = MagicMock()
             mock_session.__enter__ = MagicMock(return_value=mock_session)
@@ -1095,22 +1114,15 @@ class TestSimulateRaceWithPredictionService:
             mock_session_factory.return_value = mock_session
 
             with patch(
-                "keiba.backtest.fukusho_simulator.RaceDetailScraper"
-            ) as mock_scraper_cls:
-                mock_scraper = MagicMock()
-                mock_scraper.fetch_payouts.return_value = mock_payouts
-                mock_scraper_cls.return_value = mock_scraper
+                "keiba.backtest.fukusho_simulator.PredictionService"
+            ) as mock_prediction_service_cls:
+                mock_prediction_service = MagicMock()
+                mock_prediction_service.predict_from_shutuba.return_value = (
+                    mock_predictions
+                )
+                mock_prediction_service_cls.return_value = mock_prediction_service
 
-                with patch(
-                    "keiba.backtest.fukusho_simulator.PredictionService"
-                ) as mock_prediction_service_cls:
-                    mock_prediction_service = MagicMock()
-                    mock_prediction_service.predict_from_shutuba.return_value = (
-                        mock_predictions
-                    )
-                    mock_prediction_service_cls.return_value = mock_prediction_service
-
-                    result = simulator.simulate_race("202501050101", top_n=3)
+                result = simulator.simulate_race("202501050101", top_n=3)
 
         # 予測順（馬番5, 3, 1）になっていることを確認
         assert result.top_n_predictions == (5, 3, 1), (

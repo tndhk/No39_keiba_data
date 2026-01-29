@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from keiba.models.entry import RaceEntry, ShutubaData
 from keiba.models.race import Race
 from keiba.models.race_result import RaceResult
+from keiba.scrapers.race_detail import RaceDetailScraper
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ class BaseSimulator(ABC, Generic[TRaceResult, TSummary]):
             db_path: データベースファイルのパス
         """
         self._db_path = db_path
+        self._scraper = RaceDetailScraper()  # スクレイパーインスタンスを再利用
 
     def _get_session(self) -> Session:
         """DBセッションを取得

@@ -202,18 +202,24 @@ CLI (keiba/cli/)
     └── utils/                   # CLIユーティリティ
         ├── url_parser.py       # URL解析
         ├── date_parser.py      # 日付パース
-        └── table_printer.py    # テーブル出力
+        ├── date_range.py       # 日付範囲計算（--from/--to/--last-week）
+        ├── model_resolver.py   # MLモデル解決（--model/自動検索）
+        ├── table_printer.py    # テーブル出力
+        ├── table_formatter.py  # バックテスト結果テーブル整形
+        └── venue_filter.py     # 会場フィルタリング
     │
     ├── Scrapers (keiba/scrapers/)
+    │   ├── BaseScraper          # 基底クラス（グローバルレートリミッタ・指数バックオフ）
     │   ├── RaceListScraper      # db.netkeiba.com/race/list/
     │   ├── RaceDetailScraper    # db.netkeiba.com/race/
-    │   ├── HorseDetailScraper   # db.netkeiba.com/horse/
+    │   ├── HorseDetailScraper   # db.netkeiba.com/horse/（パース警告対応）
     │   └── ShutubaScraper       # race.netkeiba.com/race/shutuba.html
     │
     ├── Services (keiba/services/)
     │   ├── PredictionService    # ファクター計算とML予測のオーケストレーション
     │   ├── TrainingService      # 学習データ構築
-    │   └── AnalysisService      # 過去レース分析
+    │   ├── AnalysisService      # 過去レース分析
+    │   └── PastStatsCalculator  # 過去成績統計の計算（共通ユーティリティ）
     │
     ├── Repositories (keiba/repositories/)
     │   └── RaceResultRepository # レース結果データアクセス
@@ -236,6 +242,7 @@ CLI (keiba/cli/)
     │   └── model_utils          # モデルユーティリティ（最新モデル検索）
     │
     ├── Backtest (keiba/backtest/)
+    │   ├── BaseSimulator        # シミュレータ基底クラス（共通処理・スクレイパー再利用）
     │   ├── FukushoSimulator     # 複勝シミュレーション（ML統合対応）
     │   ├── TanshoSimulator      # 単勝シミュレーション（ML統合対応）
     │   ├── UmarenSimulator      # 馬連シミュレーション（ML統合対応）
@@ -253,6 +260,19 @@ CLI (keiba/cli/)
 ### データ取得時のリーク防止
 予測時は `before_date` パラメータでレース日より前のデータのみ使用。当日オッズ・人気は使用しない。
 
+### レート制限（Rate Limiting）
+`keiba/scrapers/base.py` の `BaseScraper` にグローバルレートリミッタを実装:
+- クラス変数 `_global_last_request_time` で全インスタンス間のリクエスト間隔を制御
+- HTTPエラー（403/429/503）時に指数バックオフでリトライ（5秒, 10秒, 30秒の3段階、最大3回）
+- `finally` ブロックでタイマーを更新し、エラー時もレート制限が維持される
+- バックテストシミュレータでは `BaseSimulator` が単一の `RaceDetailScraper` インスタンスを保持し、全レースのシミュレーションで再利用
+
+### バックテストシミュレータ基底クラス
+`keiba/backtest/base_simulator.py` の `BaseSimulator` で4券種シミュレータの共通機能を集約:
+- DB接続、期間内レース取得、ShutubaData構築の共通処理
+- スクレイパーインスタンスの再利用によるレート制限の一元管理
+- ジェネリック型 `TRaceResult` / `TSummary` による型安全な設計
+
 ### ファクターウェイト
 `keiba/config/weights.py` で7ファクターの重み配分を管理（各14.2-14.3%）
 
@@ -261,6 +281,12 @@ CLI (keiba/cli/)
 
 ### JRAコース判定
 `keiba/constants.py` の `JRA_COURSE_CODES` でJRA/NAR判定。race_id形式: `YYYYPPNNRRXX`（PP=競馬場コード）
+
+### パース警告（Parse Warnings）
+`keiba/scrapers/horse_detail.py` の `HorseDetailScraper` はパース結果に `parse_warnings` リストを含む:
+- HTMLの構造変更を早期検出するための警告収集機構
+- `logging` モジュールによるログ出力と、返却値への警告リスト含有を併用
+- `scrape-horses` コマンドの `--verbose` モードで警告をCLI出力に表示
 
 ## テスト構成
 

@@ -1,6 +1,6 @@
 # Architecture Codemap
 
-> Freshness: 2026-01-27 (Verified: backtest-all command, 4 simulators added)
+> Freshness: 2026-01-29 (Verified: Rate limiting, BaseSimulator, parse warnings, CLI utils expansion)
 
 ## System Overview
 
@@ -23,9 +23,13 @@ keiba/                        # 競馬データ収集・分析CLI
 |   |   +-- simulation.py     # 馬券シミュレーション (338行)
 |   +-- utils/                # CLIユーティリティ
 |       +-- __init__.py       # empty (0行)
-|       +-- url_parser.py     # URL解析 (33行)
-|       +-- date_parser.py    # 日付パース (22行)
-|       +-- table_printer.py  # テーブル出力 (215行)
+|       +-- url_parser.py      # URL解析 (33行)
+|       +-- date_parser.py     # 日付パース (22行)
+|       +-- date_range.py      # 日付範囲計算 (46行)
+|       +-- model_resolver.py  # MLモデル解決 (18行)
+|       +-- table_printer.py   # テーブル出力 (215行)
+|       +-- table_formatter.py # バックテスト結果テーブル整形 (160行)
+|       +-- venue_filter.py    # 会場フィルタリング
 +-- cli.py                    # 後方互換性（レガシー、2575行）
 +-- db.py                     # DB接続・セッション管理 (75行)
 +-- constants.py              # 定数定義 (44行)
@@ -36,16 +40,17 @@ keiba/                        # 競馬データ収集・分析CLI
 |   +-- race_result.py        # RaceResult (93行)
 |   +-- jockey.py, trainer.py, owner.py, breeder.py
 +-- scrapers/                 # Webスクレイパー
-|   +-- base.py               # BaseScraper (107行)
+|   +-- base.py               # BaseScraper（グローバルレートリミッタ・指数バックオフ） (189行)
 |   +-- race_list.py          # RaceListScraper (106行)
 |   +-- race_detail.py        # RaceDetailScraper (853行)
-|   +-- horse_detail.py       # HorseDetailScraper (280行)
+|   +-- horse_detail.py       # HorseDetailScraper（パース警告対応） (280行)
 |   +-- shutuba.py            # ShutubaScraper (356行)
 +-- services/                 # ビジネスロジックサービス
 |   +-- __init__.py           # exports (22行)
 |   +-- prediction_service.py # 予測サービス（7因子+ML） (401行)
 |   +-- training_service.py   # 学習データ構築サービス (208行)
 |   +-- analysis_service.py   # 過去レース分析サービス (235行)
+|   +-- past_stats_calculator.py # 過去成績統計計算 (110行)
 +-- repositories/             # リポジトリ層
 |   +-- __init__.py           # exports (6行)
 |   +-- race_result_repository.py # レース結果データアクセス (74行)
@@ -66,6 +71,7 @@ keiba/                        # 競馬データ収集・分析CLI
 |   +-- model_utils.py        # モデルユーティリティ（最新モデル検索）
 +-- backtest/                 # バックテストモジュール
 |   +-- backtester.py         # BacktestEngine（ウォークフォワード検証） (1093行)
+|   +-- base_simulator.py     # BaseSimulator（基底クラス・スクレイパー再利用） (176行)
 |   +-- fukusho_simulator.py  # FukushoSimulator（複勝シミュレーション） (367行)
 |   +-- tansho_simulator.py   # TanshoSimulator（単勝シミュレーション） (291行)
 |   +-- umaren_simulator.py   # UmarenSimulator（馬連シミュレーション） (316行)
@@ -150,6 +156,14 @@ repositories/race_result_repository.py
 +-- sqlalchemy (Session, select)
 +-- models/ (RaceResult, Race)
 
+scrapers/base.py
++-- time (sleep, time)
++-- requests (Session, HTTPError)
++-- bs4 (BeautifulSoup)
+    +-- クラス変数: _global_last_request_time (全インスタンス間のレート制限)
+    +-- 指数バックオフ: [5s, 10s, 30s] (403/429/503に対して)
+    +-- finally: タイマー更新（エラー時も含む）
+
 backtest/backtester.py
 +-- contextlib (contextmanager)
 +-- db.py (get_engine, get_session)
@@ -160,6 +174,19 @@ backtest/backtester.py
     +-- BacktestEngine内部構造:
         +-- クラス定数: MIN_TRAINING_SAMPLES, MAX_PAST_RESULTS_PER_HORSE, DEFAULT_FINISH_POSITION
         +-- セッション管理: _open_session(), _close_session(), _with_session()
+
+backtest/base_simulator.py
++-- abc (ABC, abstractmethod)
++-- sqlalchemy (create_engine, select, Session)
++-- models/entry.py (RaceEntry, ShutubaData)
++-- models/race.py (Race)
++-- models/race_result.py (RaceResult)
++-- scrapers/race_detail.py (RaceDetailScraper)
+    +-- BaseSimulator内部構造:
+        +-- _scraper: RaceDetailScraper (全レースで再利用)
+        +-- _get_session(), _get_races_in_period()
+        +-- _build_shutuba_from_race_results()
+        +-- simulate_period() (テンプレートメソッド)
         +-- バッチクエリ: _get_horses_past_results_batch(), _get_horses_batch()
 
 backtest/metrics.py
@@ -341,9 +368,12 @@ tests/
 |   +-- __init__.py
 |   +-- test_shutuba.py              # 出馬表スクレイパーテスト
 |   +-- test_race_detail_payouts.py  # 複勝払戻金パースのテスト
+|   +-- test_base_rate_limit.py      # レート制限テスト
+|   +-- test_update_horse.py         # 馬詳細更新テスト
 +-- services/                        # サービステスト
 |   +-- __init__.py
 |   +-- test_prediction_service.py   # 予測サービステスト
+|   +-- test_past_stats_calculator.py # 過去成績統計テスト
 +-- models/                          # モデルテスト
 |   +-- __init__.py
 |   +-- test_entry.py                # 出馬表DTOテスト
@@ -362,7 +392,18 @@ tests/
     +-- test_cache.py                # キャッシュテスト
     +-- test_cache_strategy.py       # キャッシュ戦略テスト
     +-- test_cached_factor_calculator.py  # キャッシュ付きファクター計算テスト
+    +-- test_base_simulator.py       # BaseSimulatorテスト
+    +-- test_backtest_repository.py  # バックテストリポジトリテスト
 +-- cli/test_backtest_all.py         # backtest-allコマンドテスト
++-- cli/test_scrape_horses.py        # scrape-horsesコマンドテスト
++-- cli/utils/
+    +-- test_date_range.py           # 日付範囲計算テスト
+    +-- test_model_resolver.py       # MLモデル解決テスト
+    +-- test_table_formatter.py      # テーブル整形テスト
++-- config/
+    +-- test_weights.py              # ファクター重みテスト
++-- repositories/
+    +-- test_race_result_repository.py # リポジトリテスト
 ```
 
 ## CLI Backward Compatibility

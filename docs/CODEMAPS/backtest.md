@@ -1,6 +1,6 @@
 # Backtest Codemap
 
-> Freshness: 2026-01-27 (Verified: backtest-all command added, 4 simulators)
+> Freshness: 2026-01-29 (Verified: BaseSimulator, scraper reuse, rate limiting integration)
 
 ## Overview
 
@@ -9,9 +9,10 @@
 ## Package Structure
 
 ```
-keiba/backtest/                        # 2200行+
+keiba/backtest/                        # 2400行+
 +-- __init__.py                        # 公開API (53行)
 +-- backtester.py                      # BacktestEngine (1093行)
++-- base_simulator.py                  # BaseSimulator（基底クラス・スクレイパー再利用） (176行)
 +-- fukusho_simulator.py               # FukushoSimulator (367行)
 +-- tansho_simulator.py                # TanshoSimulator (291行)
 +-- umaren_simulator.py                # UmarenSimulator (316行)
@@ -73,16 +74,25 @@ __all__ = [
 
 ### Common Architecture
 
-全シミュレータは同一のアーキテクチャに従う:
+全シミュレータは `BaseSimulator` を継承し、同一のアーキテクチャに従う。
+`BaseSimulator` は単一の `RaceDetailScraper` インスタンスを保持し、全レースで再利用する。
+これにより `BaseScraper._global_last_request_time` によるグローバルレート制限が自動適用される。
 
 ```
-Simulator
+BaseSimulator (base_simulator.py)
 +-- __init__(db_path: str)
+|   +-- self._scraper = RaceDetailScraper()  # 再利用
 +-- _get_session() -> Session
 +-- _get_races_in_period(session, from_date, to_date, venues) -> list[Race]
 +-- _build_shutuba_from_race_results(race, results) -> ShutubaData
-+-- simulate_race(race_id, ...) -> *RaceResult
-+-- simulate_period(from_date, to_date, venues, ...) -> *Summary
++-- simulate_period(from_date, to_date, venues, ...) -> TSummary  # Template Method
++-- simulate_race(race_id, ...) -> TRaceResult  # abstract
++-- _build_summary(period_from, period_to, results) -> TSummary  # abstract
+
+FukushoSimulator(BaseSimulator[FukushoRaceResult, FukushoSummary])
+TanshoSimulator(BaseSimulator[TanshoRaceResult, TanshoSummary])
+UmarenSimulator(BaseSimulator[UmarenRaceResult, UmarenSummary])
+SanrenpukuSimulator(BaseSimulator[SanrenpukuRaceResult, SanrenpukuSummary])
 ```
 
 ### FukushoSimulator (367行)
@@ -313,27 +323,30 @@ backtest/
 |   +-- analyzers/factors/ (7 factors)
 |   +-- ml/ (Trainer, Predictor)
 |
-+-- fukusho_simulator.py
++-- base_simulator.py
+|   +-- abc (ABC, abstractmethod)
+|   +-- sqlalchemy (create_engine, select, Session)
 |   +-- models/entry.py (RaceEntry, ShutubaData)
 |   +-- models/race.py (Race)
 |   +-- models/race_result.py (RaceResult)
-|   +-- scrapers/race_detail.py (fetch_payouts)
+|   +-- scrapers/race_detail.py (RaceDetailScraper) -- インスタンス再利用
+|
++-- fukusho_simulator.py
+|   +-- base_simulator.py (BaseSimulator)
+|   +-- scrapers/race_detail.py (fetch_payouts) -- self._scraper経由
 |   +-- services/prediction_service.py (PredictionService)
 |
 +-- tansho_simulator.py
-|   +-- fukusho_simulator.py (_BacktestRaceResultRepository)
-|   +-- scrapers/race_detail.py (fetch_tansho_payout)
-|   ... (same as fukusho)
+|   +-- base_simulator.py (BaseSimulator)
+|   +-- scrapers/race_detail.py (fetch_tansho_payout) -- self._scraper経由
 |
 +-- umaren_simulator.py
-|   +-- fukusho_simulator.py (_BacktestRaceResultRepository)
-|   +-- scrapers/race_detail.py (fetch_umaren_payout)
-|   ... (same as fukusho)
+|   +-- base_simulator.py (BaseSimulator)
+|   +-- scrapers/race_detail.py (fetch_umaren_payout) -- self._scraper経由
 |
 +-- sanrenpuku_simulator.py
-    +-- fukusho_simulator.py (_BacktestRaceResultRepository)
-    +-- scrapers/race_detail.py (fetch_sanrenpuku_payout)
-    ... (same as fukusho)
+    +-- base_simulator.py (BaseSimulator)
+    +-- scrapers/race_detail.py (fetch_sanrenpuku_payout) -- self._scraper経由
 ```
 
 ## Internal Classes
@@ -415,6 +428,8 @@ class _BacktestRaceResultRepository:
 tests/backtest/
 +-- __init__.py
 +-- test_backtester.py              # BacktestEngineテスト
++-- test_base_simulator.py          # BaseSimulatorテスト
++-- test_backtest_repository.py     # バックテストリポジトリテスト
 +-- test_metrics.py                 # MetricsCalculatorテスト
 +-- test_reporter.py                # BacktestReporterテスト
 +-- test_cache.py                   # キャッシュテスト
@@ -423,6 +438,9 @@ tests/backtest/
 
 tests/cli/
 +-- test_backtest_all.py            # backtest-allコマンドテスト
+
+tests/scrapers/
++-- test_base_rate_limit.py         # レート制限テスト
 ```
 
 ## Betting Strategies

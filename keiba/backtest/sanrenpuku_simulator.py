@@ -120,8 +120,7 @@ class SanrenpukuSimulator(BaseSimulator[SanrenpukuRaceResult, SanrenpukuSummary]
         predicted_trio = tuple(sorted(top_3_horse_numbers))
 
         # 6. 三連複払戻データを取得
-        scraper = RaceDetailScraper()
-        sanrenpuku_data = scraper.fetch_sanrenpuku_payout(race_id)
+        sanrenpuku_data = self._scraper.fetch_sanrenpuku_payout(race_id)
 
         # 7. 的中判定
         actual_trio = None

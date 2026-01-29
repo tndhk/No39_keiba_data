@@ -363,7 +363,15 @@ class TestUmarenSimulator:
     def simulator(self, tmp_path):
         """テスト用シミュレータを作成"""
         db_path = str(tmp_path / "test.db")
-        return UmarenSimulator(db_path)
+        # BaseSimulatorの__init__でRaceDetailScraperが作成されるため、
+        # 事前にモック化する
+        with patch("keiba.backtest.base_simulator.RaceDetailScraper") as mock_scraper_cls:
+            mock_scraper = MagicMock()
+            mock_scraper_cls.return_value = mock_scraper
+            simulator = UmarenSimulator(db_path)
+            # テスト内でモックスクレイパーを上書きできるように保持
+            simulator._scraper = mock_scraper
+        return simulator
 
     def test_init_with_db_path(self, tmp_path):
         """DBパスを指定してシミュレータを初期化できる"""
@@ -395,14 +403,8 @@ class TestUmarenSimulator:
             )
             mock_session_factory.return_value = mock_session
 
-            with patch(
-                "keiba.backtest.umaren_simulator.RaceDetailScraper"
-            ) as mock_scraper_cls:
-                mock_scraper = MagicMock()
-                mock_scraper.fetch_umaren_payout.return_value = mock_umaren_payout
-                mock_scraper_cls.return_value = mock_scraper
-
-                result = simulator.simulate_race("202501050101")
+            simulator._scraper.fetch_umaren_payout.return_value = mock_umaren_payout
+            result = simulator.simulate_race("202501050101")
 
         assert isinstance(result, UmarenRaceResult)
         assert result.race_id == "202501050101"
@@ -436,14 +438,8 @@ class TestUmarenSimulator:
             )
             mock_session_factory.return_value = mock_session
 
-            with patch(
-                "keiba.backtest.umaren_simulator.RaceDetailScraper"
-            ) as mock_scraper_cls:
-                mock_scraper = MagicMock()
-                mock_scraper.fetch_umaren_payout.return_value = mock_umaren_payout
-                mock_scraper_cls.return_value = mock_scraper
-
-                result = simulator.simulate_race("202501050102")
+            simulator._scraper.fetch_umaren_payout.return_value = mock_umaren_payout
+            result = simulator.simulate_race("202501050102")
 
         assert isinstance(result, UmarenRaceResult)
         assert result.actual_pair == (1, 3)
@@ -474,14 +470,8 @@ class TestUmarenSimulator:
             )
             mock_session_factory.return_value = mock_session
 
-            with patch(
-                "keiba.backtest.umaren_simulator.RaceDetailScraper"
-            ) as mock_scraper_cls:
-                mock_scraper = MagicMock()
-                mock_scraper.fetch_umaren_payout.return_value = mock_umaren_payout
-                mock_scraper_cls.return_value = mock_scraper
-
-                result = simulator.simulate_race("202501050103")
+            simulator._scraper.fetch_umaren_payout.return_value = mock_umaren_payout
+            result = simulator.simulate_race("202501050103")
 
         assert isinstance(result, UmarenRaceResult)
         assert result.actual_pair == (5, 8)
@@ -511,14 +501,8 @@ class TestUmarenSimulator:
             )
             mock_session_factory.return_value = mock_session
 
-            with patch(
-                "keiba.backtest.umaren_simulator.RaceDetailScraper"
-            ) as mock_scraper_cls:
-                mock_scraper = MagicMock()
-                mock_scraper.fetch_umaren_payout.return_value = None
-                mock_scraper_cls.return_value = mock_scraper
-
-                result = simulator.simulate_race("202501050104")
+            simulator._scraper.fetch_umaren_payout.return_value = None
+            result = simulator.simulate_race("202501050104")
 
         assert isinstance(result, UmarenRaceResult)
         assert result.actual_pair is None
@@ -573,18 +557,12 @@ class TestUmarenSimulator:
             mock_session.get.side_effect = [mock_races[0], mock_races[1]]
             mock_session_factory.return_value = mock_session
 
-            with patch(
-                "keiba.backtest.umaren_simulator.RaceDetailScraper"
-            ) as mock_scraper_cls:
-                mock_scraper = MagicMock()
-                mock_scraper.fetch_umaren_payout.side_effect = mock_umaren_payouts
-                mock_scraper_cls.return_value = mock_scraper
-
-                summary = simulator.simulate_period(
-                    from_date="2025-01-01",
-                    to_date="2025-01-31",
-                    venues=None,
-                )
+            simulator._scraper.fetch_umaren_payout.side_effect = mock_umaren_payouts
+            summary = simulator.simulate_period(
+                from_date="2025-01-01",
+                to_date="2025-01-31",
+                venues=None,
+            )
 
         assert isinstance(summary, UmarenSummary)
         assert summary.period_from == "2025-01-01"
@@ -619,18 +597,12 @@ class TestUmarenSimulator:
             mock_session.get.return_value = mock_races[0]
             mock_session_factory.return_value = mock_session
 
-            with patch(
-                "keiba.backtest.umaren_simulator.RaceDetailScraper"
-            ) as mock_scraper_cls:
-                mock_scraper = MagicMock()
-                mock_scraper.fetch_umaren_payout.return_value = mock_umaren_payout
-                mock_scraper_cls.return_value = mock_scraper
-
-                summary = simulator.simulate_period(
-                    from_date="2025-01-01",
-                    to_date="2025-01-31",
-                    venues=["中山", "京都"],
-                )
+            simulator._scraper.fetch_umaren_payout.return_value = mock_umaren_payout
+            summary = simulator.simulate_period(
+                from_date="2025-01-01",
+                to_date="2025-01-31",
+                venues=["中山", "京都"],
+            )
 
         assert isinstance(summary, UmarenSummary)
         for race_result in summary.race_results:
@@ -752,7 +724,15 @@ class TestSimulateRaceWithPredictionService:
     def simulator(self, tmp_path):
         """テスト用シミュレータを作成"""
         db_path = str(tmp_path / "test.db")
-        return UmarenSimulator(db_path)
+        # BaseSimulatorの__init__でRaceDetailScraperが作成されるため、
+        # 事前にモック化する
+        with patch("keiba.backtest.base_simulator.RaceDetailScraper") as mock_scraper_cls:
+            mock_scraper = MagicMock()
+            mock_scraper_cls.return_value = mock_scraper
+            simulator = UmarenSimulator(db_path)
+            # テスト内でモックスクレイパーを上書きできるように保持
+            simulator._scraper = mock_scraper
+        return simulator
 
     def test_simulate_race_uses_prediction_service(self, simulator):
         """PredictionServiceが呼び出され、予測順でTop-3から馬連組み合わせが生成されることを確認
@@ -885,23 +865,18 @@ class TestSimulateRaceWithPredictionService:
             )
             mock_session_factory.return_value = mock_session
 
+            simulator._scraper.fetch_umaren_payout.return_value = mock_umaren_payout
+
             with patch(
-                "keiba.backtest.umaren_simulator.RaceDetailScraper"
-            ) as mock_scraper_cls:
-                mock_scraper = MagicMock()
-                mock_scraper.fetch_umaren_payout.return_value = mock_umaren_payout
-                mock_scraper_cls.return_value = mock_scraper
+                "keiba.backtest.umaren_simulator.PredictionService"
+            ) as mock_prediction_service_cls:
+                mock_prediction_service = MagicMock()
+                mock_prediction_service.predict_from_shutuba.return_value = (
+                    mock_predictions
+                )
+                mock_prediction_service_cls.return_value = mock_prediction_service
 
-                with patch(
-                    "keiba.backtest.umaren_simulator.PredictionService"
-                ) as mock_prediction_service_cls:
-                    mock_prediction_service = MagicMock()
-                    mock_prediction_service.predict_from_shutuba.return_value = (
-                        mock_predictions
-                    )
-                    mock_prediction_service_cls.return_value = mock_prediction_service
-
-                    result = simulator.simulate_race("202501050101")
+                result = simulator.simulate_race("202501050101")
 
         # 予測順（馬番5, 3, 1）から生成された組み合わせを確認
         # 組み合わせ: (3,5), (1,5), (1,3) （小さい番号が先）
@@ -1012,23 +987,18 @@ class TestSimulateRaceWithPredictionService:
             )
             mock_session_factory.return_value = mock_session
 
+            simulator._scraper.fetch_umaren_payout.return_value = mock_umaren_payout
+
             with patch(
-                "keiba.backtest.umaren_simulator.RaceDetailScraper"
-            ) as mock_scraper_cls:
-                mock_scraper = MagicMock()
-                mock_scraper.fetch_umaren_payout.return_value = mock_umaren_payout
-                mock_scraper_cls.return_value = mock_scraper
+                "keiba.backtest.umaren_simulator.PredictionService"
+            ) as mock_prediction_service_cls:
+                mock_prediction_service = MagicMock()
+                mock_prediction_service.predict_from_shutuba.return_value = (
+                    mock_predictions
+                )
+                mock_prediction_service_cls.return_value = mock_prediction_service
 
-                with patch(
-                    "keiba.backtest.umaren_simulator.PredictionService"
-                ) as mock_prediction_service_cls:
-                    mock_prediction_service = MagicMock()
-                    mock_prediction_service.predict_from_shutuba.return_value = (
-                        mock_predictions
-                    )
-                    mock_prediction_service_cls.return_value = mock_prediction_service
-
-                    result = simulator.simulate_race("202501050102")
+                result = simulator.simulate_race("202501050102")
 
         # 予測順（馬番4, 5, 2）から生成された組み合わせを確認
         expected_combinations = ((4, 5), (2, 4), (2, 5))

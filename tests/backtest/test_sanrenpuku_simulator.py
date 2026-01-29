@@ -381,7 +381,15 @@ class TestSanrenpukuSimulator:
     def simulator(self, tmp_path):
         """テスト用シミュレータを作成"""
         db_path = str(tmp_path / "test.db")
-        return SanrenpukuSimulator(db_path)
+        # BaseSimulatorの__init__でRaceDetailScraperが作成されるため、
+        # 事前にモック化する
+        with patch("keiba.backtest.base_simulator.RaceDetailScraper") as mock_scraper_cls:
+            mock_scraper = MagicMock()
+            mock_scraper_cls.return_value = mock_scraper
+            simulator = SanrenpukuSimulator(db_path)
+            # テスト内でモックスクレイパーを上書きできるように保持
+            simulator._scraper = mock_scraper
+        return simulator
 
     def test_init_with_db_path(self, tmp_path):
         """DBパスを指定してシミュレータを初期化できる"""
@@ -413,14 +421,8 @@ class TestSanrenpukuSimulator:
             )
             mock_session_factory.return_value = mock_session
 
-            with patch(
-                "keiba.backtest.sanrenpuku_simulator.RaceDetailScraper"
-            ) as mock_scraper_cls:
-                mock_scraper = MagicMock()
-                mock_scraper.fetch_sanrenpuku_payout.return_value = mock_sanrenpuku_payout
-                mock_scraper_cls.return_value = mock_scraper
-
-                result = simulator.simulate_race("202501050101")
+            simulator._scraper.fetch_sanrenpuku_payout.return_value = mock_sanrenpuku_payout
+            result = simulator.simulate_race("202501050101")
 
         assert isinstance(result, SanrenpukuRaceResult)
         assert result.race_id == "202501050101"
@@ -454,14 +456,8 @@ class TestSanrenpukuSimulator:
             )
             mock_session_factory.return_value = mock_session
 
-            with patch(
-                "keiba.backtest.sanrenpuku_simulator.RaceDetailScraper"
-            ) as mock_scraper_cls:
-                mock_scraper = MagicMock()
-                mock_scraper.fetch_sanrenpuku_payout.return_value = mock_sanrenpuku_payout
-                mock_scraper_cls.return_value = mock_scraper
-
-                result = simulator.simulate_race("202501050102")
+            simulator._scraper.fetch_sanrenpuku_payout.return_value = mock_sanrenpuku_payout
+            result = simulator.simulate_race("202501050102")
 
         assert isinstance(result, SanrenpukuRaceResult)
         assert result.predicted_trio == (1, 2, 3)
@@ -494,14 +490,8 @@ class TestSanrenpukuSimulator:
             )
             mock_session_factory.return_value = mock_session
 
-            with patch(
-                "keiba.backtest.sanrenpuku_simulator.RaceDetailScraper"
-            ) as mock_scraper_cls:
-                mock_scraper = MagicMock()
-                mock_scraper.fetch_sanrenpuku_payout.return_value = mock_sanrenpuku_payout
-                mock_scraper_cls.return_value = mock_scraper
-
-                result = simulator.simulate_race("202501050103")
+            simulator._scraper.fetch_sanrenpuku_payout.return_value = mock_sanrenpuku_payout
+            result = simulator.simulate_race("202501050103")
 
         assert isinstance(result, SanrenpukuRaceResult)
         assert result.actual_trio == (5, 8, 10)
@@ -531,14 +521,8 @@ class TestSanrenpukuSimulator:
             )
             mock_session_factory.return_value = mock_session
 
-            with patch(
-                "keiba.backtest.sanrenpuku_simulator.RaceDetailScraper"
-            ) as mock_scraper_cls:
-                mock_scraper = MagicMock()
-                mock_scraper.fetch_sanrenpuku_payout.return_value = None
-                mock_scraper_cls.return_value = mock_scraper
-
-                result = simulator.simulate_race("202501050104")
+            simulator._scraper.fetch_sanrenpuku_payout.return_value = None
+            result = simulator.simulate_race("202501050104")
 
         assert isinstance(result, SanrenpukuRaceResult)
         assert result.actual_trio is None
@@ -593,18 +577,12 @@ class TestSanrenpukuSimulator:
             mock_session.get.side_effect = [mock_races[0], mock_races[1]]
             mock_session_factory.return_value = mock_session
 
-            with patch(
-                "keiba.backtest.sanrenpuku_simulator.RaceDetailScraper"
-            ) as mock_scraper_cls:
-                mock_scraper = MagicMock()
-                mock_scraper.fetch_sanrenpuku_payout.side_effect = mock_sanrenpuku_payouts
-                mock_scraper_cls.return_value = mock_scraper
-
-                summary = simulator.simulate_period(
-                    from_date="2025-01-01",
-                    to_date="2025-01-31",
-                    venues=None,
-                )
+            simulator._scraper.fetch_sanrenpuku_payout.side_effect = mock_sanrenpuku_payouts
+            summary = simulator.simulate_period(
+                from_date="2025-01-01",
+                to_date="2025-01-31",
+                venues=None,
+            )
 
         assert isinstance(summary, SanrenpukuSummary)
         assert summary.period_from == "2025-01-01"
@@ -639,18 +617,12 @@ class TestSanrenpukuSimulator:
             mock_session.get.return_value = mock_races[0]
             mock_session_factory.return_value = mock_session
 
-            with patch(
-                "keiba.backtest.sanrenpuku_simulator.RaceDetailScraper"
-            ) as mock_scraper_cls:
-                mock_scraper = MagicMock()
-                mock_scraper.fetch_sanrenpuku_payout.return_value = mock_sanrenpuku_payout
-                mock_scraper_cls.return_value = mock_scraper
-
-                summary = simulator.simulate_period(
-                    from_date="2025-01-01",
-                    to_date="2025-01-31",
-                    venues=["中山", "京都"],
-                )
+            simulator._scraper.fetch_sanrenpuku_payout.return_value = mock_sanrenpuku_payout
+            summary = simulator.simulate_period(
+                from_date="2025-01-01",
+                to_date="2025-01-31",
+                venues=["中山", "京都"],
+            )
 
         assert isinstance(summary, SanrenpukuSummary)
         for race_result in summary.race_results:
@@ -751,7 +723,15 @@ class TestSimulateRaceWithPredictionService:
     def simulator(self, tmp_path):
         """テスト用シミュレータを作成"""
         db_path = str(tmp_path / "test.db")
-        return SanrenpukuSimulator(db_path)
+        # BaseSimulatorの__init__でRaceDetailScraperが作成されるため、
+        # 事前にモック化する
+        with patch("keiba.backtest.base_simulator.RaceDetailScraper") as mock_scraper_cls:
+            mock_scraper = MagicMock()
+            mock_scraper_cls.return_value = mock_scraper
+            simulator = SanrenpukuSimulator(db_path)
+            # テスト内でモックスクレイパーを上書きできるように保持
+            simulator._scraper = mock_scraper
+        return simulator
 
     def test_simulate_race_uses_prediction_service(self, simulator):
         """PredictionServiceが呼び出され、予測順でTop-3から三連複を購入することを確認
@@ -884,23 +864,18 @@ class TestSimulateRaceWithPredictionService:
             )
             mock_session_factory.return_value = mock_session
 
+            simulator._scraper.fetch_sanrenpuku_payout.return_value = mock_sanrenpuku_payout
+
             with patch(
-                "keiba.backtest.sanrenpuku_simulator.RaceDetailScraper"
-            ) as mock_scraper_cls:
-                mock_scraper = MagicMock()
-                mock_scraper.fetch_sanrenpuku_payout.return_value = mock_sanrenpuku_payout
-                mock_scraper_cls.return_value = mock_scraper
+                "keiba.backtest.sanrenpuku_simulator.PredictionService"
+            ) as mock_prediction_service_cls:
+                mock_prediction_service = MagicMock()
+                mock_prediction_service.predict_from_shutuba.return_value = (
+                    mock_predictions
+                )
+                mock_prediction_service_cls.return_value = mock_prediction_service
 
-                with patch(
-                    "keiba.backtest.sanrenpuku_simulator.PredictionService"
-                ) as mock_prediction_service_cls:
-                    mock_prediction_service = MagicMock()
-                    mock_prediction_service.predict_from_shutuba.return_value = (
-                        mock_predictions
-                    )
-                    mock_prediction_service_cls.return_value = mock_prediction_service
-
-                    result = simulator.simulate_race("202501050101")
+                result = simulator.simulate_race("202501050101")
 
         # 予測順（馬番5, 3, 1）から生成されたトリオを確認
         # predicted_trio = (1, 3, 5) （昇順ソート）
@@ -1011,23 +986,18 @@ class TestSimulateRaceWithPredictionService:
             )
             mock_session_factory.return_value = mock_session
 
+            simulator._scraper.fetch_sanrenpuku_payout.return_value = mock_sanrenpuku_payout
+
             with patch(
-                "keiba.backtest.sanrenpuku_simulator.RaceDetailScraper"
-            ) as mock_scraper_cls:
-                mock_scraper = MagicMock()
-                mock_scraper.fetch_sanrenpuku_payout.return_value = mock_sanrenpuku_payout
-                mock_scraper_cls.return_value = mock_scraper
+                "keiba.backtest.sanrenpuku_simulator.PredictionService"
+            ) as mock_prediction_service_cls:
+                mock_prediction_service = MagicMock()
+                mock_prediction_service.predict_from_shutuba.return_value = (
+                    mock_predictions
+                )
+                mock_prediction_service_cls.return_value = mock_prediction_service
 
-                with patch(
-                    "keiba.backtest.sanrenpuku_simulator.PredictionService"
-                ) as mock_prediction_service_cls:
-                    mock_prediction_service = MagicMock()
-                    mock_prediction_service.predict_from_shutuba.return_value = (
-                        mock_predictions
-                    )
-                    mock_prediction_service_cls.return_value = mock_prediction_service
-
-                    result = simulator.simulate_race("202501050102")
+                result = simulator.simulate_race("202501050102")
 
         # 予測順（馬番4, 5, 2）から生成されたトリオを確認
         expected_predicted_trio = (2, 4, 5)

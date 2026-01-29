@@ -2,7 +2,7 @@
 
 競馬データ収集システムの開発ワークフローガイド。
 
-> Freshness: 2026-01-26 (Verified: CLI package refactoring, Services layer, Repositories layer)
+> Freshness: 2026-01-29 (Verified: Rate limiting, BaseSimulator, parse warnings, CLI utils expansion)
 
 ## 環境セットアップ
 
@@ -37,28 +37,34 @@ keiba/
 +-- cli/                    # CLIパッケージ
 |   +-- __init__.py        # エントリーポイント（main）
 |   +-- commands/          # CLIコマンドモジュール
-|   |   +-- scrape.py     # scrape, scrape-horses
+|   |   +-- scrape.py     # scrape, scrape-horses（verbose/warnings対応）
 |   |   +-- analyze.py    # analyze
 |   |   +-- predict.py    # predict, predict-day
 |   |   +-- train.py      # train
 |   |   +-- review.py     # review-day
-|   |   +-- backtest.py   # backtest, backtest-fukusho
+|   |   +-- backtest.py   # backtest, backtest-fukusho/tansho/umaren/sanrenpuku/all
 |   |   +-- migrate.py    # migrate-grades
 |   +-- formatters/        # 出力フォーマッタ
 |   |   +-- markdown.py   # Markdown保存/パース
 |   |   +-- simulation.py # 馬券シミュレーション計算
 |   +-- utils/             # CLIユーティリティ
-|       +-- url_parser.py    # URL解析
-|       +-- date_parser.py   # 日付パース
-|       +-- table_printer.py # テーブル出力
+|       +-- url_parser.py      # URL解析
+|       +-- date_parser.py     # 日付パース
+|       +-- date_range.py      # 日付範囲計算（--from/--to/--last-week）
+|       +-- model_resolver.py  # MLモデル解決（--model/自動検索）
+|       +-- table_printer.py   # テーブル出力
+|       +-- table_formatter.py # バックテスト結果テーブル整形
+|       +-- venue_filter.py    # 会場フィルタリング
 +-- models/                 # SQLAlchemyモデル定義
 |   +-- entry.py           # 出馬表DTO（RaceEntry, ShutubaData）
 +-- scrapers/               # Webスクレイパー
+|   +-- base.py            # BaseScraper（グローバルレートリミッタ・指数バックオフ）
 |   +-- shutuba.py         # 出馬表スクレイパー（ShutubaScraper）
 +-- services/               # ビジネスロジックサービス
-|   +-- prediction_service.py   # 予測サービス（PredictionService）
-|   +-- training_service.py     # 学習データ構築サービス
-|   +-- analysis_service.py     # 過去レース分析サービス
+|   +-- prediction_service.py     # 予測サービス（PredictionService）
+|   +-- training_service.py       # 学習データ構築サービス
+|   +-- analysis_service.py       # 過去レース分析サービス
+|   +-- past_stats_calculator.py  # 過去成績統計の計算
 +-- repositories/           # リポジトリ層
 |   +-- race_result_repository.py  # レース結果データアクセス
 +-- analyzers/              # レース分析モジュール
@@ -70,7 +76,13 @@ keiba/
 |   +-- model_utils.py     # モデルユーティリティ（最新モデル検索等）
 +-- backtest/               # バックテストモジュール
 |   +-- backtester.py      # BacktestEngine（セッション管理、バッチクエリ）
-|   +-- fukusho_simulator.py # 複勝シミュレーション
+|   +-- base_simulator.py  # BaseSimulator（基底クラス、スクレイパー再利用）
+|   +-- fukusho_simulator.py    # 複勝シミュレーション
+|   +-- tansho_simulator.py     # 単勝シミュレーション
+|   +-- umaren_simulator.py     # 馬連シミュレーション
+|   +-- sanrenpuku_simulator.py # 三連複シミュレーション
+|   +-- factor_calculator.py    # ファクター計算
+|   +-- cache.py           # キャッシュ機構
 |   +-- metrics.py         # メトリクス計算
 |   +-- reporter.py        # レポート出力
 +-- config/                 # 設定（分析ウェイト、血統マスタ等）
@@ -602,6 +614,47 @@ sqlite3 data/keiba.db "CREATE INDEX IF NOT EXISTS ix_races_date ON races(date);"
 
 **注意**: 新規にテーブル作成する場合は、モデル定義（`keiba/models/`）にインデックスを追加すること。
 `scripts/add_indexes.py` は既存DBへの後付けインデックス用。
+
+## スクレイピングのレート制限
+
+### グローバルレートリミッタ
+
+`BaseScraper` はクラス変数 `_global_last_request_time` で全インスタンス間のリクエスト間隔を制御する。
+
+```python
+# 全スクレイパーインスタンスで共有されるタイマー
+BaseScraper._global_last_request_time: float | None = None
+
+# _apply_delay() で最後のリクエストからの経過時間をチェック
+# delay未満の場合は残り時間をsleep
+```
+
+ポイント:
+- 異なるスクレイパークラス（RaceListScraper、RaceDetailScraper等）間でもレート制限が共有される
+- バックテストシミュレータでは `BaseSimulator._scraper` で単一インスタンスを再利用
+- `finally` ブロックでタイマー更新するため、HTTPエラー時もレート制限タイマーが正しく更新される
+
+### 指数バックオフ（リトライ機構）
+
+HTTPエラー 403/429/503 発生時に指数バックオフでリトライ:
+
+```python
+# backoff_delays = [5, 10, 30]  # 秒
+# max_retries = 3
+# 対象: "403", "429", "503"
+```
+
+### パース警告
+
+`HorseDetailScraper` は `parse_warnings` リストを返却値に含む。
+HTML構造の変更を早期検出するため、パースできなかった要素について警告を収集する。
+
+```python
+result = {"id": horse_id, "parse_warnings": []}
+# 各パースメソッドで warnings.append("element not found") を呼び出し
+```
+
+`scrape-horses --verbose` オプションで警告をCLI出力に表示可能。
 
 ## コーディング規約
 

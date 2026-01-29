@@ -124,8 +124,7 @@ class FukushoSimulator(BaseSimulator[FukushoRaceResult, FukushoSummary]):
             )
 
         # 5. 払戻データを取得
-        scraper = RaceDetailScraper()
-        payout_data = scraper.fetch_payouts(race_id)
+        payout_data = self._scraper.fetch_payouts(race_id)
 
         # 複勝対象馬番と払戻額をマップ
         fukusho_map = {p["horse_number"]: p["payout"] for p in payout_data}

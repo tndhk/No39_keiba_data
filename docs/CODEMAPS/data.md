@@ -1,6 +1,6 @@
 # Data Models Codemap
 
-> Freshness: 2026-01-27 (Verified: 4 simulators added, backtest-all command)
+> Freshness: 2026-01-29 (Verified: Rate limiting, BaseSimulator, parse warnings)
 
 ## Database Schema (SQLite)
 

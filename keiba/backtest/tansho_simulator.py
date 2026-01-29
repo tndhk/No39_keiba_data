@@ -122,8 +122,7 @@ class TanshoSimulator(BaseSimulator[TanshoRaceResult, TanshoSummary]):
             )
 
         # 5. 単勝払戻データを取得
-        scraper = RaceDetailScraper()
-        tansho_data = scraper.fetch_tansho_payout(race_id)
+        tansho_data = self._scraper.fetch_tansho_payout(race_id)
 
         # 6. 的中判定
         winning_horse = None

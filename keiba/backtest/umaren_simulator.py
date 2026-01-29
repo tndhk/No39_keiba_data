@@ -146,8 +146,7 @@ class UmarenSimulator(BaseSimulator[UmarenRaceResult, UmarenSummary]):
         bet_combinations = self._generate_bet_combinations(top_3_predictions)
 
         # 6. 馬連払戻データを取得
-        scraper = RaceDetailScraper()
-        umaren_data = scraper.fetch_umaren_payout(race_id)
+        umaren_data = self._scraper.fetch_umaren_payout(race_id)
 
         # 7. 的中判定
         actual_pair = None

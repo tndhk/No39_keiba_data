@@ -1,6 +1,6 @@
 # Backend Codemap
 
-> Freshness: 2026-01-27 (Verified: backtest-all command, 4 simulators added)
+> Freshness: 2026-01-29 (Verified: Rate limiting, BaseSimulator, parse warnings, CLI utils expansion)
 
 ## Overview
 
@@ -102,7 +102,11 @@ main.add_command(migrate_grades)  # from commands/migrate.py
 |--------|-------|-----------|---------|
 | url_parser.py | 33 | `extract_race_id_from_url()`, `extract_race_id_from_shutuba_url()` | URL解析 |
 | date_parser.py | 22 | `parse_race_date()` | 日付文字列パース |
+| date_range.py | 46 | `resolve_date_range()` | 日付範囲計算（--from/--to/--last-week対応） |
+| model_resolver.py | 18 | `resolve_model_path()` | MLモデルパス解決（--model/自動検索） |
 | table_printer.py | 215 | `print_score_table()`, `print_score_table_with_ml()`, `print_prediction_table()` | テーブル出力 |
+| table_formatter.py | 160 | バックテスト結果テーブル整形関数 | バックテスト結果の表整形 |
+| venue_filter.py | - | 会場フィルタリング関数 | 会場名のフィルタリング |
 
 ### Backward Compatibility
 
@@ -124,7 +128,7 @@ _print_prediction_table = print_prediction_table
 
 ## Services (keiba/services/)
 
-### Package Structure (844行)
+### Package Structure (954行)
 
 ```
 keiba/services/
@@ -132,6 +136,17 @@ keiba/services/
 +-- prediction_service.py    # 予測サービス (401行)
 +-- training_service.py      # 学習データ構築サービス (208行)
 +-- analysis_service.py      # 過去レース分析サービス (235行)
++-- past_stats_calculator.py # 過去成績統計計算 (110行)
+```
+
+### PastStatsCalculator (110行)
+
+```
+keiba/services/past_stats_calculator.py
+|
++-- calculate_past_stats(past_results) -> dict
+|   勝率、Top3率、平均着順などの派生特徴量を計算
+|   PredictionService, TrainingServiceから共通利用
 ```
 
 ### PredictionService (401行)
@@ -238,16 +253,60 @@ class SQLAlchemyRaceResultRepository:
 
 ## Scrapers (keiba/scrapers/)
 
-### Structure (1702行)
+### Structure (1702行+)
 
 ```
 keiba/scrapers/
 +-- __init__.py          # 公開インポート
-+-- base.py              # BaseScraper基底クラス (107行)
++-- base.py              # BaseScraper（グローバルレートリミッタ・指数バックオフ） (189行)
 +-- race_list.py         # RaceListScraper (106行)
 +-- race_detail.py       # RaceDetailScraper (853行)
-+-- horse_detail.py      # HorseDetailScraper (280行)
++-- horse_detail.py      # HorseDetailScraper（パース警告対応） (280行)
 +-- shutuba.py           # ShutubaScraper (356行)
+```
+
+### BaseScraper (189行)
+
+グローバルレートリミッタと指数バックオフを実装した基底クラス。
+
+```python
+class BaseScraper:
+    # クラス変数: 全インスタンス間で共有されるレート制限タイマー
+    _global_last_request_time: float | None = None
+
+    def __init__(self, delay: float = 1.0): ...
+
+    def fetch(self, url: str) -> str:
+        """HTTP GETリクエスト（指数バックオフ付きリトライ）
+
+        - 403/429/503エラー時に自動リトライ（最大3回）
+        - バックオフ間隔: 5秒, 10秒, 30秒
+        - finally: エラー時もグローバルタイマーを更新
+        """
+
+    def _apply_delay(self) -> None:
+        """グローバルレートリミッタ
+
+        全BaseScraper派生インスタンス間で最後のリクエスト
+        からの経過時間をチェックし、delay未満の場合はsleep
+        """
+```
+
+レート制限の動作:
+- `_apply_delay()`: `BaseScraper._global_last_request_time` をチェックし、必要に応じてsleep
+- `finally` ブロック: `_last_request_time`（インスタンス）と `_global_last_request_time`（クラス）の両方を更新
+- HTTP 403/429/503: 5秒 -> 10秒 -> 30秒の指数バックオフでリトライ
+
+### HorseDetailScraper (280行) -- パース警告
+
+```python
+class HorseDetailScraper(BaseScraper):
+    def parse(self, soup) -> dict:
+        """パース結果に parse_warnings リストを含む
+
+        Returns:
+            {"id": str, "name": str, ..., "parse_warnings": list[str]}
+        """
 ```
 
 ### RaceListScraper (106行)
@@ -387,12 +446,13 @@ def find_latest_model(model_dir: str) -> str | None:
 
 ## Backtest Layer (keiba/backtest/)
 
-### Structure (2500行+)
+### Structure (2700行+)
 
 ```
 keiba/backtest/
 +-- __init__.py
 +-- backtester.py           # BacktestEngine (1093行)
++-- base_simulator.py       # BaseSimulator（基底クラス・スクレイパー再利用） (176行)
 +-- fukusho_simulator.py    # FukushoSimulator (367行)
 +-- tansho_simulator.py     # TanshoSimulator (291行)
 +-- umaren_simulator.py     # UmarenSimulator (316行)
@@ -402,6 +462,33 @@ keiba/backtest/
 +-- factor_calculator.py    # ファクター計算 (249行)
 +-- cache.py                # キャッシュ機構 (125行)
 ```
+
+### BaseSimulator (176行)
+
+4券種シミュレータの共通基底クラス。Template Methodパターンを使用。
+
+```python
+class BaseSimulator(ABC, Generic[TRaceResult, TSummary]):
+    def __init__(self, db_path: str) -> None:
+        self._db_path = db_path
+        self._scraper = RaceDetailScraper()  # スクレイパーインスタンスを再利用
+
+    def _get_session(self) -> Session: ...
+    def _get_races_in_period(session, from_date, to_date, venues) -> list[Race]: ...
+    def _build_shutuba_from_race_results(race, results) -> ShutubaData: ...
+    def simulate_period(from_date, to_date, venues, **kwargs) -> TSummary: ...
+
+    @abstractmethod
+    def simulate_race(self, race_id: str, **kwargs) -> TRaceResult: ...
+
+    @abstractmethod
+    def _build_summary(self, period_from, period_to, race_results) -> TSummary: ...
+```
+
+設計ポイント:
+- 単一の `RaceDetailScraper` インスタンスで全レースの払戻金取得を実行
+- `BaseScraper._global_last_request_time` によりレート制限が自動適用
+- `simulate_period()` がTemplate Methodとして動作し、サブクラスは `simulate_race()` と `_build_summary()` のみ実装
 
 詳細は [backtest.md](./backtest.md) を参照。
 

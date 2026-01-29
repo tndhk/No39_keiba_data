@@ -164,6 +164,9 @@ keiba scrape-horses --db data/keiba.db
 # 取得件数を指定
 keiba scrape-horses --db data/keiba.db --limit 500
 
+# 詳細表示（パース警告を表示）
+keiba scrape-horses --db data/keiba.db --limit 500 -v
+
 # 出力例
 # 馬詳細データ収集開始
 # データベース: data/keiba.db
@@ -176,7 +179,13 @@ keiba scrape-horses --db data/keiba.db --limit 500
 #   処理数: 50
 #   更新成功: 48
 #   エラー: 2
+#   パース警告あり: 3件 (--verbose で詳細表示)
 ```
+
+パース警告:
+- `HorseDetailScraper` はHTMLの構造変更を検出して `parse_warnings` リストに記録
+- `--verbose` / `-v` オプションで警告の詳細がCLI出力に表示される
+- 警告が頻出する場合はnetkeibaのHTML構造変更を確認し、パーサーを更新する
 
 ### グレード情報のマイグレーション
 
@@ -409,7 +418,7 @@ keiba scrape-horses --db data/keiba.db --limit 500
 
 解決: passing_orderはレース詳細取得時に自動保存される。古いデータの場合は再取得が必要。
 
-### 4. HTTPエラー (403/429)
+### 4. HTTPエラー (403/429/503)
 
 症状:
 ```
@@ -418,9 +427,15 @@ requests.exceptions.HTTPError: 403 Client Error: Forbidden
 
 原因: アクセス制限またはレート制限
 
-解決:
-- スクレイパーのdelayを増やす（デフォルト1秒）
-- 時間をおいて再実行
+自動対策（v1.x以降）:
+- `BaseScraper` がHTTP 403/429/503エラー時に指数バックオフで自動リトライ
+- リトライ間隔: 5秒, 10秒, 30秒（最大3回）
+- グローバルレートリミッタにより全スクレイパーインスタンス間でリクエスト間隔を制御
+- HTTPエラー時もレート制限タイマーが更新されるため、連続リクエストによるブロックを防止
+
+手動対策:
+- 上記リトライでも解決しない場合は、時間をおいて再実行
+- `BaseScraper(delay=2.0)` のようにdelayを増やすことも可能（デフォルト1秒）
 
 ### 5. パースエラー
 
@@ -546,4 +561,4 @@ DELETE FROM races WHERE id LIKE '202403%';
 ```
 
 ---
-Freshness: 2026-01-25
+Freshness: 2026-01-29
