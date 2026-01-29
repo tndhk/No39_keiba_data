@@ -1,6 +1,6 @@
 # Backend Codemap
 
-> Freshness: 2026-01-29 (Verified: Rate limiting, BaseSimulator, parse warnings, CLI utils expansion)
+> Freshness: 2026-01-29 (Line counts verified, simulator refactoring, scraper updates)
 
 ## Overview
 
@@ -11,26 +11,30 @@
 ### Package Structure
 
 ```
-keiba/cli/                       # 1748行合計
-+-- __init__.py                  # main, 後方互換性エクスポート (111行)
-+-- commands/                    # CLIコマンドモジュール (1748行)
-|   +-- __init__.py              # exports (6行)
-|   +-- scrape.py                # scrape, scrape-horses (319行)
+keiba/cli/                       # 2954行合計
++-- __init__.py                  # main, 後方互換性エクスポート (122行)
++-- commands/                    # CLIコマンドモジュール (2234行)
+|   +-- __init__.py              # exports (5行)
+|   +-- scrape.py                # scrape, scrape-horses (429行)
 |   +-- analyze.py               # analyze (623行)
-|   +-- predict.py               # predict, predict-day (321行)
+|   +-- predict.py               # predict, predict-day (315行)
 |   +-- train.py                 # train (78行)
-|   +-- review.py                # review-day (193行)
-|   +-- backtest.py              # backtest, backtest-fukusho/tansho/umaren/sanrenpuku/all (671行)
+|   +-- review.py                # review-day (206行)
+|   +-- backtest.py              # backtest, backtest-fukusho/tansho/umaren/sanrenpuku/all (528行)
 |   +-- migrate.py               # migrate-grades (50行)
-+-- formatters/                  # 出力フォーマッタ (677行)
-|   +-- __init__.py              # exports (14行)
-|   +-- markdown.py              # Markdown保存/パース/追記 (325行)
++-- formatters/                  # 出力フォーマッタ (685行)
+|   +-- __init__.py              # exports (13行)
+|   +-- markdown.py              # Markdown保存/パース/追記 (334行)
 |   +-- simulation.py            # 馬券シミュレーション計算 (338行)
-+-- utils/                       # ユーティリティ (270行)
++-- utils/                       # ユーティリティ (532行)
     +-- __init__.py              # empty (0行)
     +-- url_parser.py            # URL解析 (33行)
-    +-- date_parser.py           # 日付パース (22行)
+    +-- date_parser.py           # 日付パース (33行)
+    +-- date_range.py            # 日付範囲計算 (46行)
+    +-- model_resolver.py        # MLモデル解決 (18行)
     +-- table_printer.py         # テーブル出力 (215行)
+    +-- table_formatter.py       # バックテスト結果テーブル整形 (160行)
+    +-- venue_filter.py          # 会場フィルタリング (27行)
 ```
 
 ### Entry Point
@@ -62,14 +66,14 @@ main.add_command(migrate_grades)  # from commands/migrate.py
 
 | Command | File | Lines | Description |
 |---------|------|-------|-------------|
-| scrape | commands/scrape.py | 319 | レースデータ収集（年月指定） |
+| scrape | commands/scrape.py | 429 | レースデータ収集（年月指定） |
 | scrape-horses | commands/scrape.py | - | 馬詳細データ収集 |
 | analyze | commands/analyze.py | 623 | レース分析 + ML予測 |
-| predict | commands/predict.py | 321 | 出馬表URLから予測 |
+| predict | commands/predict.py | 315 | 出馬表URLから予測 |
 | predict-day | commands/predict.py | - | 指定日・競馬場の全レース予測 |
-| review-day | commands/review.py | 193 | 予測結果と実績比較（複勝・単勝・馬連・三連複シミュレーション） |
+| review-day | commands/review.py | 206 | 予測結果と実績比較（複勝・単勝・馬連・三連複シミュレーション） |
 | migrate-grades | commands/migrate.py | 50 | グレード情報マイグレーション |
-| backtest | commands/backtest.py | 671 | ML予測バックテスト |
+| backtest | commands/backtest.py | 528 | ML予測バックテスト |
 | backtest-fukusho | commands/backtest.py | - | 複勝シミュレーション |
 | backtest-tansho | commands/backtest.py | - | 単勝シミュレーション |
 | backtest-umaren | commands/backtest.py | - | 馬連シミュレーション |
@@ -101,12 +105,12 @@ main.add_command(migrate_grades)  # from commands/migrate.py
 | Module | Lines | Functions | Purpose |
 |--------|-------|-----------|---------|
 | url_parser.py | 33 | `extract_race_id_from_url()`, `extract_race_id_from_shutuba_url()` | URL解析 |
-| date_parser.py | 22 | `parse_race_date()` | 日付文字列パース |
+| date_parser.py | 33 | `parse_race_date()` | 日付文字列パース |
 | date_range.py | 46 | `resolve_date_range()` | 日付範囲計算（--from/--to/--last-week対応） |
 | model_resolver.py | 18 | `resolve_model_path()` | MLモデルパス解決（--model/自動検索） |
 | table_printer.py | 215 | `print_score_table()`, `print_score_table_with_ml()`, `print_prediction_table()` | テーブル出力 |
 | table_formatter.py | 160 | バックテスト結果テーブル整形関数 | バックテスト結果の表整形 |
-| venue_filter.py | - | 会場フィルタリング関数 | 会場名のフィルタリング |
+| venue_filter.py | 27 | 会場フィルタリング関数 | 会場名のフィルタリング |
 
 ### Backward Compatibility
 
@@ -128,13 +132,13 @@ _print_prediction_table = print_prediction_table
 
 ## Services (keiba/services/)
 
-### Package Structure (954行)
+### Package Structure (956行)
 
 ```
 keiba/services/
-+-- __init__.py              # 公開API (22行)
-+-- prediction_service.py    # 予測サービス (401行)
-+-- training_service.py      # 学習データ構築サービス (208行)
++-- __init__.py              # 公開API (21行)
++-- prediction_service.py    # 予測サービス (410行)
++-- training_service.py      # 学習データ構築サービス (180行)
 +-- analysis_service.py      # 過去レース分析サービス (235行)
 +-- past_stats_calculator.py # 過去成績統計計算 (110行)
 ```
@@ -229,12 +233,12 @@ def _calculate_combined_score(
 
 ## Repositories (keiba/repositories/)
 
-### Package Structure (80行)
+### Package Structure (133行)
 
 ```
 keiba/repositories/
-+-- __init__.py                    # 公開API (6行)
-+-- race_result_repository.py      # レース結果リポジトリ (74行)
++-- __init__.py                    # 公開API (5行)
++-- race_result_repository.py      # レース結果リポジトリ (128行)
 ```
 
 ### SQLAlchemyRaceResultRepository (74行)
@@ -253,15 +257,15 @@ class SQLAlchemyRaceResultRepository:
 
 ## Scrapers (keiba/scrapers/)
 
-### Structure (1702行+)
+### Structure (1881行+)
 
 ```
 keiba/scrapers/
-+-- __init__.py          # 公開インポート
-+-- base.py              # BaseScraper（グローバルレートリミッタ・指数バックオフ） (189行)
++-- __init__.py          # 公開インポート (17行)
++-- base.py              # BaseScraper（グローバルレートリミッタ・指数バックオフ） (188行)
 +-- race_list.py         # RaceListScraper (106行)
 +-- race_detail.py       # RaceDetailScraper (853行)
-+-- horse_detail.py      # HorseDetailScraper（パース警告対応） (280行)
++-- horse_detail.py      # HorseDetailScraper（パース警告対応） (361行)
 +-- shutuba.py           # ShutubaScraper (356行)
 ```
 
@@ -397,15 +401,15 @@ def init_db(engine: Engine) -> None:
 
 ## ML Layer (keiba/ml/)
 
-### Structure (362行+)
+### Structure (409行)
 
 ```
 keiba/ml/
-+-- __init__.py
-+-- feature_builder.py   # 特徴量構築（19特徴量） (113行)
-+-- trainer.py           # LightGBMモデル学習 (189行)
++-- __init__.py          # 公開API (26行)
++-- feature_builder.py   # 特徴量構築（19特徴量） (103行)
++-- trainer.py           # LightGBMモデル学習 (193行)
 +-- predictor.py         # 予測実行 (60行)
-+-- model_utils.py       # ユーティリティ
++-- model_utils.py       # ユーティリティ (27行)
 ```
 
 ### Trainer (189行)
@@ -446,17 +450,17 @@ def find_latest_model(model_dir: str) -> str | None:
 
 ## Backtest Layer (keiba/backtest/)
 
-### Structure (2700行+)
+### Structure (2640行)
 
 ```
 keiba/backtest/
-+-- __init__.py
++-- __init__.py             # 公開API (55行)
 +-- backtester.py           # BacktestEngine (1093行)
-+-- base_simulator.py       # BaseSimulator（基底クラス・スクレイパー再利用） (176行)
-+-- fukusho_simulator.py    # FukushoSimulator (367行)
-+-- tansho_simulator.py     # TanshoSimulator (291行)
-+-- umaren_simulator.py     # UmarenSimulator (316行)
-+-- sanrenpuku_simulator.py # SanrenpukuSimulator (290行)
++-- base_simulator.py       # BaseSimulator（基底クラス・スクレイパー再利用） (175行)
++-- fukusho_simulator.py    # FukushoSimulator (191行)
++-- tansho_simulator.py     # TanshoSimulator (185行)
++-- umaren_simulator.py     # UmarenSimulator (212行)
++-- sanrenpuku_simulator.py # SanrenpukuSimulator (189行)
 +-- metrics.py              # MetricsCalculator (198行)
 +-- reporter.py             # BacktestReporter (168行)
 +-- factor_calculator.py    # ファクター計算 (249行)
@@ -607,15 +611,15 @@ FACTOR_WEIGHTS = {
 
 | Category | Total Lines | Files |
 |----------|-------------|-------|
-| CLI Package | 3200 | 14 |
-| Services | 844 | 4 |
-| Repositories | 80 | 2 |
-| Scrapers | 1702 | 6 |
-| ML | 362+ | 4 |
-| Backtest | 3100 | 10 |
-| Analyzers | 591 | 8 |
-| Models | 450+ | 8 |
-| Config | 127+ | 2 |
-| Utils | 231 | 1 |
+| CLI Package | 2954 | 18 |
+| Services | 956 | 5 |
+| Repositories | 133 | 2 |
+| Scrapers | 1881 | 6 |
+| ML | 409 | 5 |
+| Backtest | 2640 | 11 |
+| Analyzers | 597 | 9 |
+| Models | 437 | 9 |
+| Config | 153 | 3 |
+| Utils | 236 | 2 |
 | DB | 75 | 1 |
 | Constants | 44 | 1 |

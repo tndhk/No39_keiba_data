@@ -187,13 +187,13 @@ keiba train --db data/keiba.db --output data/models/model_202601.joblib
 CLI (keiba/cli/)
     │
     ├── commands/                # CLIコマンド
-    │   ├── scrape.py           # scrape, scrape-horses
-    │   ├── analyze.py          # analyze
-    │   ├── predict.py          # predict, predict-day
-    │   ├── train.py            # train
-    │   ├── review.py           # review-day
-    │   ├── backtest.py         # backtest, backtest-fukusho, backtest-tansho, backtest-umaren, backtest-sanrenpuku, backtest-all
-    │   └── migrate.py          # migrate-grades
+    │   ├── scrape.py           # scrape, scrape-horses (429行)
+    │   ├── analyze.py          # analyze (623行)
+    │   ├── predict.py          # predict, predict-day (315行)
+    │   ├── train.py            # train (78行)
+    │   ├── review.py           # review-day (206行)
+    │   ├── backtest.py         # backtest, backtest-fukusho, backtest-tansho, backtest-umaren, backtest-sanrenpuku, backtest-all (528行)
+    │   └── migrate.py          # migrate-grades (50行)
     │
     ├── formatters/              # 出力フォーマッタ
     │   ├── markdown.py         # Markdown保存/パース/追記

@@ -1,6 +1,6 @@
 # Codemaps Index
 
-> Freshness: 2026-01-29 (Rate limiting, BaseSimulator, parse warnings, CLI utils expansion)
+> Freshness: 2026-01-29 (Line counts verified, simulator refactoring, scraper updates)
 
 競馬データ収集システムのコードマップ一覧。
 
@@ -22,69 +22,69 @@
 ```
 keiba/                           # 競馬データ収集・分析CLI
 +-- cli/                         # CLIパッケージ (Click)
-|   +-- __init__.py              # main, 後方互換性エクスポート (111行)
+|   +-- __init__.py              # main, 後方互換性エクスポート (122行)
 |   +-- commands/                # CLIコマンドモジュール
-|   |   +-- scrape.py            # scrape, scrape-horses (319行)
+|   |   +-- scrape.py            # scrape, scrape-horses (429行)
 |   |   +-- analyze.py           # analyze (623行)
-|   |   +-- predict.py           # predict, predict-day (321行)
+|   |   +-- predict.py           # predict, predict-day (315行)
 |   |   +-- train.py             # train (78行)
-|   |   +-- review.py            # review-day (193行)
-|   |   +-- backtest.py          # backtest, backtest-fukusho/tansho/umaren/sanrenpuku/all (671行)
+|   |   +-- review.py            # review-day (206行)
+|   |   +-- backtest.py          # backtest, backtest-fukusho/tansho/umaren/sanrenpuku/all (528行)
 |   |   +-- migrate.py           # migrate-grades (50行)
 |   +-- formatters/              # 出力フォーマッタ
-|   |   +-- markdown.py          # Markdown保存/パース (325行)
+|   |   +-- markdown.py          # Markdown保存/パース (334行)
 |   |   +-- simulation.py        # 馬券シミュレーション (338行)
 |   +-- utils/                   # CLIユーティリティ
 |       +-- url_parser.py        # URL解析 (33行)
-|       +-- date_parser.py       # 日付パース (22行)
+|       +-- date_parser.py       # 日付パース (33行)
 |       +-- date_range.py        # 日付範囲計算 (46行)
 |       +-- model_resolver.py    # MLモデル解決 (18行)
 |       +-- table_printer.py     # テーブル出力 (215行)
 |       +-- table_formatter.py   # バックテスト結果テーブル整形 (160行)
-|       +-- venue_filter.py      # 会場フィルタリング
+|       +-- venue_filter.py      # 会場フィルタリング (27行)
 |
-+-- cli.py                       # 後方互換性エントリ (2575行, レガシー)
++-- cli.py                       # 後方互換性エントリ (2606行, レガシー)
 |
 +-- services/                    # ビジネスロジック
-|   +-- prediction_service.py    # 予測オーケストレーション (401行)
-|   +-- training_service.py      # 学習データ構築 (208行)
+|   +-- prediction_service.py    # 予測オーケストレーション (410行)
+|   +-- training_service.py      # 学習データ構築 (180行)
 |   +-- analysis_service.py      # 過去レース分析 (235行)
 |   +-- past_stats_calculator.py # 過去成績統計計算 (110行)
 |
 +-- repositories/                # データアクセス層
-|   +-- race_result_repository.py # レース結果リポジトリ (74行)
+|   +-- race_result_repository.py # レース結果リポジトリ (128行)
 |
 +-- scrapers/                    # Webスクレイパー
 |   +-- race_list.py             # レース一覧取得 (106行)
 |   +-- race_detail.py           # レース詳細取得 (853行)
-|   +-- horse_detail.py          # 馬詳細取得（パース警告対応） (280行)
+|   +-- horse_detail.py          # 馬詳細取得（パース警告対応） (361行)
 |   +-- shutuba.py               # 出馬表取得 (356行)
-|   +-- base.py                  # 基底クラス（グローバルレートリミッタ・指数バックオフ） (189行)
+|   +-- base.py                  # 基底クラス（グローバルレートリミッタ・指数バックオフ） (188行)
 |
 +-- analyzers/                   # レース分析
 |   +-- score_calculator.py      # 総合スコア算出 (43行)
 |   +-- factors/                 # 7つの分析ファクター
-|       +-- past_results.py      # 直近成績 (79行)
-|       +-- course_fit.py        # コース適性 (74行)
-|       +-- time_index.py        # タイム指数 (98行)
-|       +-- last_3f.py           # 上がり3F (45行)
+|       +-- past_results.py      # 直近成績 (112行)
+|       +-- course_fit.py        # コース適性 (85行)
+|       +-- time_index.py        # タイム指数 (101行)
+|       +-- last_3f.py           # 上がり3F (57行)
 |       +-- popularity.py        # 人気評価 (58行)
 |       +-- pedigree.py          # 血統適性 (68行)
 |       +-- running_style.py     # 脚質マッチ (126行)
 |
 +-- ml/                          # 機械学習
-|   +-- feature_builder.py       # 特徴量構築 (113行)
-|   +-- trainer.py               # LightGBM学習 (189行)
+|   +-- feature_builder.py       # 特徴量構築 (103行)
+|   +-- trainer.py               # LightGBM学習 (193行)
 |   +-- predictor.py             # 予測実行 (60行)
-|   +-- model_utils.py           # モデルユーティリティ
+|   +-- model_utils.py           # モデルユーティリティ (27行)
 |
 +-- backtest/                    # バックテスト
 |   +-- backtester.py            # ウォークフォワード検証 (1093行)
-|   +-- base_simulator.py       # シミュレータ基底クラス（スクレイパー再利用） (176行)
-|   +-- fukusho_simulator.py     # 複勝シミュレーション (367行)
-|   +-- tansho_simulator.py      # 単勝シミュレーション (291行)
-|   +-- umaren_simulator.py      # 馬連シミュレーション (316行)
-|   +-- sanrenpuku_simulator.py  # 三連複シミュレーション (290行)
+|   +-- base_simulator.py       # シミュレータ基底クラス（スクレイパー再利用） (175行)
+|   +-- fukusho_simulator.py     # 複勝シミュレーション (191行)
+|   +-- tansho_simulator.py      # 単勝シミュレーション (185行)
+|   +-- umaren_simulator.py      # 馬連シミュレーション (212行)
+|   +-- sanrenpuku_simulator.py  # 三連複シミュレーション (189行)
 |   +-- metrics.py               # 精度評価 (198行)
 |   +-- reporter.py              # レポート出力 (168行)
 |   +-- factor_calculator.py     # ファクター計算 (249行)
@@ -94,7 +94,7 @@ keiba/                           # 競馬データ収集・分析CLI
 |   +-- race.py, horse.py, race_result.py, entry.py, ...
 |
 +-- config/                      # 設定
-|   +-- weights.py               # ファクター重み
+|   +-- weights.py               # ファクター重み (21行)
 |   +-- pedigree_master.py       # 血統マスタ (127行)
 |
 +-- utils/                       # ユーティリティ

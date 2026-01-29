@@ -2,7 +2,7 @@
 
 競馬データ収集システムの開発ワークフローガイド。
 
-> Freshness: 2026-01-29 (Verified: Rate limiting, BaseSimulator, parse warnings, CLI utils expansion)
+> Freshness: 2026-01-29 (Verified: Line counts, test files, scraper changes, simulator refactoring)
 
 ## 環境セットアップ
 
@@ -35,71 +35,89 @@ pip install -e ".[dev]"
 ```
 keiba/
 +-- cli/                    # CLIパッケージ
-|   +-- __init__.py        # エントリーポイント（main）
+|   +-- __init__.py        # エントリーポイント（main）(122行)
 |   +-- commands/          # CLIコマンドモジュール
-|   |   +-- scrape.py     # scrape, scrape-horses（verbose/warnings対応）
-|   |   +-- analyze.py    # analyze
-|   |   +-- predict.py    # predict, predict-day
-|   |   +-- train.py      # train
-|   |   +-- review.py     # review-day
-|   |   +-- backtest.py   # backtest, backtest-fukusho/tansho/umaren/sanrenpuku/all
-|   |   +-- migrate.py    # migrate-grades
+|   |   +-- scrape.py     # scrape, scrape-horses（verbose/warnings対応）(429行)
+|   |   +-- analyze.py    # analyze (623行)
+|   |   +-- predict.py    # predict, predict-day (315行)
+|   |   +-- train.py      # train (78行)
+|   |   +-- review.py     # review-day (206行)
+|   |   +-- backtest.py   # backtest, backtest-fukusho/tansho/umaren/sanrenpuku/all (528行)
+|   |   +-- migrate.py    # migrate-grades (50行)
 |   +-- formatters/        # 出力フォーマッタ
-|   |   +-- markdown.py   # Markdown保存/パース
-|   |   +-- simulation.py # 馬券シミュレーション計算
+|   |   +-- markdown.py   # Markdown保存/パース (334行)
+|   |   +-- simulation.py # 馬券シミュレーション計算 (338行)
 |   +-- utils/             # CLIユーティリティ
-|       +-- url_parser.py      # URL解析
-|       +-- date_parser.py     # 日付パース
-|       +-- date_range.py      # 日付範囲計算（--from/--to/--last-week）
-|       +-- model_resolver.py  # MLモデル解決（--model/自動検索）
-|       +-- table_printer.py   # テーブル出力
-|       +-- table_formatter.py # バックテスト結果テーブル整形
-|       +-- venue_filter.py    # 会場フィルタリング
+|       +-- url_parser.py      # URL解析 (33行)
+|       +-- date_parser.py     # 日付パース (33行)
+|       +-- date_range.py      # 日付範囲計算（--from/--to/--last-week）(46行)
+|       +-- model_resolver.py  # MLモデル解決（--model/自動検索）(18行)
+|       +-- table_printer.py   # テーブル出力 (215行)
+|       +-- table_formatter.py # バックテスト結果テーブル整形 (160行)
+|       +-- venue_filter.py    # 会場フィルタリング (27行)
 +-- models/                 # SQLAlchemyモデル定義
-|   +-- entry.py           # 出馬表DTO（RaceEntry, ShutubaData）
+|   +-- entry.py           # 出馬表DTO（RaceEntry, ShutubaData）(66行)
 +-- scrapers/               # Webスクレイパー
-|   +-- base.py            # BaseScraper（グローバルレートリミッタ・指数バックオフ）
-|   +-- shutuba.py         # 出馬表スクレイパー（ShutubaScraper）
+|   +-- base.py            # BaseScraper（グローバルレートリミッタ・指数バックオフ）(188行)
+|   +-- race_list.py       # レース一覧取得（RaceListScraper）(106行)
+|   +-- race_detail.py     # レース詳細取得（RaceDetailScraper）(853行)
+|   +-- horse_detail.py    # 馬詳細取得（HorseDetailScraper・パース警告対応）(361行)
+|   +-- shutuba.py         # 出馬表スクレイパー（ShutubaScraper）(356行)
 +-- services/               # ビジネスロジックサービス
-|   +-- prediction_service.py     # 予測サービス（PredictionService）
-|   +-- training_service.py       # 学習データ構築サービス
-|   +-- analysis_service.py       # 過去レース分析サービス
-|   +-- past_stats_calculator.py  # 過去成績統計の計算
+|   +-- prediction_service.py     # 予測サービス（PredictionService）(410行)
+|   +-- training_service.py       # 学習データ構築サービス (180行)
+|   +-- analysis_service.py       # 過去レース分析サービス (235行)
+|   +-- past_stats_calculator.py  # 過去成績統計の計算 (110行)
 +-- repositories/           # リポジトリ層
-|   +-- race_result_repository.py  # レース結果データアクセス
+|   +-- race_result_repository.py  # レース結果データアクセス (128行)
 +-- analyzers/              # レース分析モジュール
+|   +-- score_calculator.py # 総合スコア算出 (43行)
 |   +-- factors/           # スコア算出ファクター（7因子）
+|       +-- past_results.py   # 直近成績 (112行)
+|       +-- course_fit.py     # コース適性 (85行)
+|       +-- time_index.py     # タイム指数 (101行)
+|       +-- last_3f.py        # 上がり3F (57行)
+|       +-- popularity.py     # 人気評価 (58行)
+|       +-- pedigree.py       # 血統適性 (68行)
+|       +-- running_style.py  # 脚質マッチ (126行)
 +-- ml/                     # 機械学習予測モジュール
-|   +-- feature_builder.py # 特徴量構築
-|   +-- trainer.py         # LightGBMモデル学習
-|   +-- predictor.py       # 予測実行
-|   +-- model_utils.py     # モデルユーティリティ（最新モデル検索等）
+|   +-- feature_builder.py # 特徴量構築 (103行)
+|   +-- trainer.py         # LightGBMモデル学習 (193行)
+|   +-- predictor.py       # 予測実行 (60行)
+|   +-- model_utils.py     # モデルユーティリティ（最新モデル検索）(27行)
 +-- backtest/               # バックテストモジュール
-|   +-- backtester.py      # BacktestEngine（セッション管理、バッチクエリ）
-|   +-- base_simulator.py  # BaseSimulator（基底クラス、スクレイパー再利用）
-|   +-- fukusho_simulator.py    # 複勝シミュレーション
-|   +-- tansho_simulator.py     # 単勝シミュレーション
-|   +-- umaren_simulator.py     # 馬連シミュレーション
-|   +-- sanrenpuku_simulator.py # 三連複シミュレーション
-|   +-- factor_calculator.py    # ファクター計算
-|   +-- cache.py           # キャッシュ機構
-|   +-- metrics.py         # メトリクス計算
-|   +-- reporter.py        # レポート出力
+|   +-- backtester.py      # BacktestEngine（セッション管理、バッチクエリ）(1093行)
+|   +-- base_simulator.py  # BaseSimulator（基底クラス、スクレイパー再利用）(175行)
+|   +-- fukusho_simulator.py    # 複勝シミュレーション (191行)
+|   +-- tansho_simulator.py     # 単勝シミュレーション (185行)
+|   +-- umaren_simulator.py     # 馬連シミュレーション (212行)
+|   +-- sanrenpuku_simulator.py # 三連複シミュレーション (189行)
+|   +-- factor_calculator.py    # ファクター計算 (249行)
+|   +-- cache.py           # キャッシュ機構 (125行)
+|   +-- metrics.py         # メトリクス計算 (198行)
+|   +-- reporter.py        # レポート出力 (168行)
 +-- config/                 # 設定（分析ウェイト、血統マスタ等）
+|   +-- weights.py         # ファクター重み (21行)
+|   +-- pedigree_master.py # 血統マスタ (127行)
 +-- utils/                  # ユーティリティ
-|   +-- grade_extractor.py # グレード抽出
-+-- db.py                   # データベース接続
-+-- cli.py                  # 後方互換性（cli/__init__.pyへリダイレクト）
+|   +-- grade_extractor.py # グレード抽出 (231行)
++-- db.py                   # データベース接続 (75行)
++-- constants.py            # 定数定義 (44行)
++-- cli.py                  # 後方互換性（cli/__init__.pyへリダイレクト）(2606行, レガシー)
 scripts/
 +-- add_indexes.py          # 既存DBへのインデックス追加スクリプト
 tests/
 +-- fixtures/               # テスト用HTMLフィクスチャ
 +-- cli/                    # CLIコマンドテスト
+|   +-- utils/             # CLIユーティリティテスト
 +-- services/               # サービス層テスト
++-- models/                 # モデルテスト
 +-- ml/                     # ML関連テスト
 +-- backtest/               # バックテストテスト
-+-- test_db_indexes.py      # DBインデックス存在確認テスト
-+-- test_*.py               # テストファイル
++-- scrapers/               # スクレイパーテスト
++-- config/                 # 設定テスト
++-- repositories/           # リポジトリテスト
++-- test_*.py               # テストファイル（ルート直下）
 ```
 
 ## CLIコマンド

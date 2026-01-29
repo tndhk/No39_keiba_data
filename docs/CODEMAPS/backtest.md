@@ -1,6 +1,6 @@
 # Backtest Codemap
 
-> Freshness: 2026-01-29 (Verified: BaseSimulator, scraper reuse, rate limiting integration)
+> Freshness: 2026-01-29 (Line counts verified, simulator refactoring)
 
 ## Overview
 
@@ -9,14 +9,14 @@
 ## Package Structure
 
 ```
-keiba/backtest/                        # 2400行+
-+-- __init__.py                        # 公開API (53行)
+keiba/backtest/                        # 2640行
++-- __init__.py                        # 公開API (55行)
 +-- backtester.py                      # BacktestEngine (1093行)
-+-- base_simulator.py                  # BaseSimulator（基底クラス・スクレイパー再利用） (176行)
-+-- fukusho_simulator.py               # FukushoSimulator (367行)
-+-- tansho_simulator.py                # TanshoSimulator (291行)
-+-- umaren_simulator.py                # UmarenSimulator (316行)
-+-- sanrenpuku_simulator.py            # SanrenpukuSimulator (290行)
++-- base_simulator.py                  # BaseSimulator（基底クラス・スクレイパー再利用） (175行)
++-- fukusho_simulator.py               # FukushoSimulator (191行)
++-- tansho_simulator.py                # TanshoSimulator (185行)
++-- umaren_simulator.py                # UmarenSimulator (212行)
++-- sanrenpuku_simulator.py            # SanrenpukuSimulator (189行)
 +-- metrics.py                         # MetricsCalculator (198行)
 +-- reporter.py                        # BacktestReporter (168行)
 +-- factor_calculator.py               # ファクター計算 (249行)
@@ -95,7 +95,7 @@ UmarenSimulator(BaseSimulator[UmarenRaceResult, UmarenSummary])
 SanrenpukuSimulator(BaseSimulator[SanrenpukuRaceResult, SanrenpukuSummary])
 ```
 
-### FukushoSimulator (367行)
+### FukushoSimulator (191行)
 
 複勝馬券シミュレータ。予測Top-Nの各馬に100円ずつ賭け、3着以内なら的中。
 
@@ -127,7 +127,7 @@ class FukushoSummary:
     race_results: tuple[FukushoRaceResult, ...]
 ```
 
-### TanshoSimulator (291行)
+### TanshoSimulator (185行)
 
 単勝馬券シミュレータ。予測Top-Nの各馬に100円ずつ賭け、1着なら的中。
 
@@ -158,7 +158,7 @@ class TanshoSummary:
     race_results: tuple[TanshoRaceResult, ...]
 ```
 
-### UmarenSimulator (316行)
+### UmarenSimulator (212行)
 
 馬連馬券シミュレータ。予測Top3から3点買い（1-2, 1-3, 2-3）。
 
@@ -188,7 +188,7 @@ class UmarenSummary:
     race_results: tuple[UmarenRaceResult, ...]
 ```
 
-### SanrenpukuSimulator (290行)
+### SanrenpukuSimulator (189行)
 
 三連複馬券シミュレータ。予測Top3の1点買い。
 
@@ -435,12 +435,19 @@ tests/backtest/
 +-- test_cache.py                   # キャッシュテスト
 +-- test_cache_strategy.py          # キャッシュ戦略テスト
 +-- test_cached_factor_calculator.py # キャッシュ付きファクター計算テスト
++-- test_fukusho_simulator.py       # 複勝シミュレータテスト
++-- test_tansho_simulator.py        # 単勝シミュレータテスト
++-- test_umaren_simulator.py        # 馬連シミュレータテスト
++-- test_sanrenpuku_simulator.py    # 三連複シミュレータテスト
++-- test_simulator_scraper_reuse.py # シミュレータスクレイパー再利用テスト
 
 tests/cli/
 +-- test_backtest_all.py            # backtest-allコマンドテスト
++-- test_cli_backtest_fukusho.py    # 複勝バックテストCLIテスト
 
 tests/scrapers/
 +-- test_base_rate_limit.py         # レート制限テスト
++-- test_base_retry.py              # リトライ機構テスト
 ```
 
 ## Betting Strategies
