@@ -89,11 +89,6 @@ class HorseDetailScraper(BaseScraper):
         # プロフィールテーブルを取得
         # db_prof_table または horse_title の後の table を探す
         prof_table = soup.find("table", class_="db_prof_table")
-        if not prof_table:
-            warnings.append("db_prof_table not found")
-            logger.warning("db_prof_table element not found")
-            return profile
-
         if prof_table:
             rows = prof_table.find_all("tr")
             for row in rows:
@@ -155,14 +150,17 @@ class HorseDetailScraper(BaseScraper):
                         # 性別を抽出（牡、牝、セ）
                         if value:
                             profile["sex"] = value[0] if value else None
+        else:
+            warnings.append("db_prof_table not found")
+            logger.debug("db_prof_table element not found")
 
         # 馬名の横に性別・年齢がある場合もある（例: "牡5"）
         # horse_title の中の sex_age を探す
         sex_age = soup.find("p", class_="txt_01")
         if sex_age:
             text = sex_age.get_text(strip=True)
-            # "牡5" や "牝4" や "牝 鹿毛" などのパターン（年齢部分は任意）
-            match = re.match(r"^([牡牝セ])", text)
+            # "牡5" や "牝4" や "牝 鹿毛" や "現役 牡4歳 栗毛" などのパターン
+            match = re.search(r"([牡牝セ])", text)
             if match:
                 profile["sex"] = match.group(1)
         else:

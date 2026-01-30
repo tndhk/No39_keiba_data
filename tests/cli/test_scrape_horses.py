@@ -34,7 +34,7 @@ class TestScrapeHorsesDateMode:
 
     @patch("keiba.cli.commands.scrape.HorseDetailScraper")
     @patch("keiba.cli.commands.scrape.ShutubaScraper")
-    @patch("keiba.cli.commands.scrape.RaceListScraper")
+    @patch("keiba.cli.commands.scrape.fetch_race_ids_for_date")
     @patch("keiba.cli.commands.scrape.get_session")
     @patch("keiba.cli.commands.scrape.get_engine")
     @patch("keiba.cli.commands.scrape.init_db")
@@ -43,7 +43,7 @@ class TestScrapeHorsesDateMode:
         mock_init_db,
         mock_get_engine,
         mock_get_session,
-        mock_race_list_scraper,
+        mock_fetch_race_ids,
         mock_shutuba_scraper,
         mock_horse_detail_scraper,
     ):
@@ -55,13 +55,11 @@ class TestScrapeHorsesDateMode:
         mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
-        # RaceListScraper mock
-        mock_list_scraper = MagicMock()
-        mock_list_scraper.fetch_race_urls.return_value = [
-            "https://db.netkeiba.com/race/202606010101/",
-            "https://db.netkeiba.com/race/202606010102/",
+        # fetch_race_ids_for_date mock
+        mock_fetch_race_ids.return_value = [
+            "202606010101",
+            "202606010102",
         ]
-        mock_race_list_scraper.return_value = mock_list_scraper
 
         # ShutubaScraper mock
         mock_shutuba = MagicMock()
@@ -120,8 +118,8 @@ class TestScrapeHorsesDateMode:
                 ],
             )
 
-        # RaceListScraper が呼ばれたこと
-        mock_list_scraper.fetch_race_urls.assert_called_once_with(
+        # fetch_race_ids_for_date が呼ばれたこと
+        mock_fetch_race_ids.assert_called_once_with(
             2026, 6, 1, jra_only=True
         )
 
@@ -133,7 +131,7 @@ class TestScrapeHorsesDateMode:
 
     @patch("keiba.cli.commands.scrape.HorseDetailScraper")
     @patch("keiba.cli.commands.scrape.ShutubaScraper")
-    @patch("keiba.cli.commands.scrape.RaceListScraper")
+    @patch("keiba.cli.commands.scrape.fetch_race_ids_for_date")
     @patch("keiba.cli.commands.scrape.get_session")
     @patch("keiba.cli.commands.scrape.get_engine")
     @patch("keiba.cli.commands.scrape.init_db")
@@ -142,7 +140,7 @@ class TestScrapeHorsesDateMode:
         mock_init_db,
         mock_get_engine,
         mock_get_session,
-        mock_race_list_scraper,
+        mock_fetch_race_ids,
         mock_shutuba_scraper,
         mock_horse_detail_scraper,
     ):
@@ -154,13 +152,11 @@ class TestScrapeHorsesDateMode:
         mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
-        # RaceListScraper mock (中山と東京が混在)
-        mock_list_scraper = MagicMock()
-        mock_list_scraper.fetch_race_urls.return_value = [
-            "https://db.netkeiba.com/race/202606010101/",  # 中山（06）
-            "https://db.netkeiba.com/race/202605010101/",  # 東京（05）
+        # fetch_race_ids_for_date mock (中山と東京が混在)
+        mock_fetch_race_ids.return_value = [
+            "202606010101",  # 中山（06）
+            "202605010101",  # 東京（05）
         ]
-        mock_race_list_scraper.return_value = mock_list_scraper
 
         # ShutubaScraper mock
         mock_shutuba = MagicMock()
@@ -214,7 +210,7 @@ class TestScrapeHorsesSkipsExisting:
 
     @patch("keiba.cli.commands.scrape.HorseDetailScraper")
     @patch("keiba.cli.commands.scrape.ShutubaScraper")
-    @patch("keiba.cli.commands.scrape.RaceListScraper")
+    @patch("keiba.cli.commands.scrape.fetch_race_ids_for_date")
     @patch("keiba.cli.commands.scrape.get_session")
     @patch("keiba.cli.commands.scrape.get_engine")
     @patch("keiba.cli.commands.scrape.init_db")
@@ -223,7 +219,7 @@ class TestScrapeHorsesSkipsExisting:
         mock_init_db,
         mock_get_engine,
         mock_get_session,
-        mock_race_list_scraper,
+        mock_fetch_race_ids,
         mock_shutuba_scraper,
         mock_horse_detail_scraper,
     ):
@@ -235,12 +231,10 @@ class TestScrapeHorsesSkipsExisting:
         mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
-        # RaceListScraper mock
-        mock_list_scraper = MagicMock()
-        mock_list_scraper.fetch_race_urls.return_value = [
-            "https://db.netkeiba.com/race/202606010101/",
+        # fetch_race_ids_for_date mock
+        mock_fetch_race_ids.return_value = [
+            "202606010101",
         ]
-        mock_race_list_scraper.return_value = mock_list_scraper
 
         # ShutubaScraper mock
         mock_shutuba = MagicMock()
@@ -313,7 +307,7 @@ class TestScrapeHorsesMissingHorseRecords:
 
     @patch("keiba.cli.commands.scrape.HorseDetailScraper")
     @patch("keiba.cli.commands.scrape.ShutubaScraper")
-    @patch("keiba.cli.commands.scrape.RaceListScraper")
+    @patch("keiba.cli.commands.scrape.fetch_race_ids_for_date")
     @patch("keiba.cli.commands.scrape.get_session")
     @patch("keiba.cli.commands.scrape.get_engine")
     @patch("keiba.cli.commands.scrape.init_db")
@@ -322,7 +316,7 @@ class TestScrapeHorsesMissingHorseRecords:
         mock_init_db,
         mock_get_engine,
         mock_get_session,
-        mock_race_list_scraper,
+        mock_fetch_race_ids,
         mock_shutuba_scraper,
         mock_horse_detail_scraper,
     ):
@@ -334,12 +328,10 @@ class TestScrapeHorsesMissingHorseRecords:
         mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
-        # RaceListScraper mock
-        mock_list_scraper = MagicMock()
-        mock_list_scraper.fetch_race_urls.return_value = [
-            "https://db.netkeiba.com/race/202606010101/",
+        # fetch_race_ids_for_date mock
+        mock_fetch_race_ids.return_value = [
+            "202606010101",
         ]
-        mock_race_list_scraper.return_value = mock_list_scraper
 
         # ShutubaScraper mock
         mock_shutuba = MagicMock()

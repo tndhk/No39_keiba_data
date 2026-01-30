@@ -187,9 +187,9 @@ keiba train --db data/keiba.db --output data/models/model_202601.joblib
 CLI (keiba/cli/)
     │
     ├── commands/                # CLIコマンド
-    │   ├── scrape.py           # scrape, scrape-horses (429行)
+    │   ├── scrape.py           # scrape, scrape-horses (421行)
     │   ├── analyze.py          # analyze (623行)
-    │   ├── predict.py          # predict, predict-day (315行)
+    │   ├── predict.py          # predict, predict-day (314行)
     │   ├── train.py            # train (78行)
     │   ├── review.py           # review-day (206行)
     │   ├── backtest.py         # backtest, backtest-fukusho, backtest-tansho, backtest-umaren, backtest-sanrenpuku, backtest-all (528行)
@@ -210,9 +210,11 @@ CLI (keiba/cli/)
     │
     ├── Scrapers (keiba/scrapers/)
     │   ├── BaseScraper          # 基底クラス（グローバルレートリミッタ・指数バックオフ）
-    │   ├── RaceListScraper      # db.netkeiba.com/race/list/
+    │   ├── RaceListScraper      # db.netkeiba.com/race/list/（過去データ専用）
+    │   ├── RaceListSubScraper   # race.netkeiba.com/top/race_list_sub.html（未来日付対応）
+    │   ├── race_id_resolver     # フォールバック機能（未来→過去）
     │   ├── RaceDetailScraper    # db.netkeiba.com/race/
-    │   ├── HorseDetailScraper   # db.netkeiba.com/horse/（パース警告対応）
+    │   ├── HorseDetailScraper   # db.netkeiba.com/horse/（パース警告・AJAX血統取得対応）
     │   └── ShutubaScraper       # race.netkeiba.com/race/shutuba.html
     │
     ├── Services (keiba/services/)
@@ -287,6 +289,19 @@ CLI (keiba/cli/)
 - HTMLの構造変更を早期検出するための警告収集機構
 - `logging` モジュールによるログ出力と、返却値への警告リスト含有を併用
 - `scrape-horses` コマンドの `--verbose` モードで警告をCLI出力に表示
+
+### AJAX血統取得
+`keiba/scrapers/horse_detail.py` の `HorseDetailScraper` はAJAX APIによる血統情報取得に対応:
+- `PEDIGREE_AJAX_URL = https://db.netkeiba.com/horse/ajax_horse_pedigree.html`
+- メインページの `blood_table` から取得できない場合のフォールバックとして動作
+- `_fetch_pedigree_ajax(horse_id)` メソッドでHTMLフラグメントを取得し、血統情報をパース
+
+### 未来日付対応
+`keiba/scrapers/race_list_sub.py` と `race_id_resolver.py` で未来日付のレース取得に対応:
+- `RaceListSubScraper`: `race.netkeiba.com/top/race_list_sub.html` から未来日付のrace_idを取得
+- `fetch_race_ids_for_date()`: RaceListSubScraper → RaceListScraper の自動フォールバック
+- `scrape-horses --date` と `predict-day` で未来日付を指定可能
+- 既存の `RaceListScraper`（過去データ専用）は変更なし
 
 ## テスト構成
 

@@ -1,6 +1,5 @@
 """予測コマンド（predict, predict-day）の実装"""
 
-import re
 from datetime import date
 from datetime import datetime as dt
 from pathlib import Path
@@ -10,11 +9,12 @@ import click
 from keiba.cli.formatters.markdown import save_predictions_markdown
 from keiba.cli.utils.table_printer import print_prediction_table
 from keiba.cli.utils.url_parser import extract_race_id_from_shutuba_url
-from keiba.cli.utils.venue_filter import get_race_ids_for_venue
+from keiba.cli.utils.venue_filter import filter_race_ids_by_venue, get_race_ids_for_venue
 from keiba.constants import VENUE_CODE_MAP
 from keiba.db import get_engine, get_session
 from keiba.ml.model_utils import find_latest_model
 from keiba.scrapers import RaceListScraper
+from keiba.scrapers.race_id_resolver import fetch_race_ids_for_date
 from keiba.scrapers.shutuba import ShutubaScraper
 from keiba.services.prediction_service import PredictionService
 
@@ -183,9 +183,8 @@ def predict_day(date_str: str | None, venue: str, db: str, no_ml: bool):
     engine = get_engine(db)
 
     # レース一覧を取得
-    race_list_scraper = RaceListScraper()
     try:
-        race_urls = race_list_scraper.fetch_race_urls(
+        race_ids = fetch_race_ids_for_date(
             target_date.year, target_date.month, target_date.day, jra_only=True
         )
     except Exception as e:
@@ -193,7 +192,7 @@ def predict_day(date_str: str | None, venue: str, db: str, no_ml: bool):
         raise SystemExit(1)
 
     # 指定競馬場のレースをフィルタリング
-    race_ids = get_race_ids_for_venue(race_urls, venue_code)
+    race_ids = filter_race_ids_by_venue(race_ids, venue_code)
 
     if not race_ids:
         click.echo(f"{date_str} {venue}のレースは見つかりませんでした")

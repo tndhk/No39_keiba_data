@@ -1,6 +1,6 @@
 # Backtest Codemap
 
-> Freshness: 2026-01-29 (Line counts verified, simulator refactoring)
+> Freshness: 2026-01-30 (Line counts verified)
 
 ## Overview
 

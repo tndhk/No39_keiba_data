@@ -2,7 +2,7 @@
 
 競馬データ収集システムの開発ワークフローガイド。
 
-> Freshness: 2026-01-29 (Verified: Line counts, test files, scraper changes, simulator refactoring)
+> Freshness: 2026-01-30 (Verified: Line counts, test files, scraper changes, simulator refactoring, horse_detail AJAX)
 
 ## 環境セットアップ
 
@@ -37,9 +37,9 @@ keiba/
 +-- cli/                    # CLIパッケージ
 |   +-- __init__.py        # エントリーポイント（main）(122行)
 |   +-- commands/          # CLIコマンドモジュール
-|   |   +-- scrape.py     # scrape, scrape-horses（verbose/warnings対応）(429行)
+|   |   +-- scrape.py     # scrape, scrape-horses（verbose/warnings対応）(421行)
 |   |   +-- analyze.py    # analyze (623行)
-|   |   +-- predict.py    # predict, predict-day (315行)
+|   |   +-- predict.py    # predict, predict-day (314行)
 |   |   +-- train.py      # train (78行)
 |   |   +-- review.py     # review-day (206行)
 |   |   +-- backtest.py   # backtest, backtest-fukusho/tansho/umaren/sanrenpuku/all (528行)
@@ -54,14 +54,14 @@ keiba/
 |       +-- model_resolver.py  # MLモデル解決（--model/自動検索）(18行)
 |       +-- table_printer.py   # テーブル出力 (215行)
 |       +-- table_formatter.py # バックテスト結果テーブル整形 (160行)
-|       +-- venue_filter.py    # 会場フィルタリング (27行)
+|       +-- venue_filter.py    # 会場フィルタリング (44行)
 +-- models/                 # SQLAlchemyモデル定義
 |   +-- entry.py           # 出馬表DTO（RaceEntry, ShutubaData）(66行)
 +-- scrapers/               # Webスクレイパー
 |   +-- base.py            # BaseScraper（グローバルレートリミッタ・指数バックオフ）(188行)
 |   +-- race_list.py       # レース一覧取得（RaceListScraper）(106行)
 |   +-- race_detail.py     # レース詳細取得（RaceDetailScraper）(853行)
-|   +-- horse_detail.py    # 馬詳細取得（HorseDetailScraper・パース警告対応）(361行)
+|   +-- horse_detail.py    # 馬詳細取得（HorseDetailScraper・パース警告・AJAX血統取得対応）(367行)
 |   +-- shutuba.py         # 出馬表スクレイパー（ShutubaScraper）(356行)
 +-- services/               # ビジネスロジックサービス
 |   +-- prediction_service.py     # 予測サービス（PredictionService）(410行)
@@ -117,6 +117,8 @@ tests/
 +-- scrapers/               # スクレイパーテスト
 +-- config/                 # 設定テスト
 +-- repositories/           # リポジトリテスト
++-- scripts/                 # スクリプトテスト
+|   +-- test_factor_importance.py
 +-- test_*.py               # テストファイル（ルート直下）
 ```
 

@@ -1,6 +1,6 @@
 # Data Models Codemap
 
-> Freshness: 2026-01-29 (Verified: Line counts, repository expansion)
+> Freshness: 2026-01-30 (Verified: Line counts, repository expansion)
 
 ## Database Schema (SQLite)
 

@@ -25,3 +25,20 @@ def get_race_ids_for_venue(race_urls: list[str], venue_code: str) -> list[str]:
                 race_ids.append(race_id)
 
     return race_ids
+
+
+def filter_race_ids_by_venue(race_ids: list[str], venue_code: str) -> list[str]:
+    """レースIDリストを指定競馬場でフィルタリングする
+
+    Args:
+        race_ids: レースIDのリスト（12桁の文字列）
+        venue_code: 競馬場コード（2桁の文字列、例: "06"）
+
+    Returns:
+        指定競馬場のレースIDリスト
+    """
+    return [
+        race_id
+        for race_id in race_ids
+        if len(race_id) >= 6 and race_id[4:6] == venue_code
+    ]

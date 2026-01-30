@@ -96,13 +96,17 @@ class TestFetchPedigreeAjax:
             # 呼び出し引数を取得
             call_args = mock_get.call_args
 
-            # URLが正しいことを確認
-            expected_url = "https://db.netkeiba.com/horse/pedigree/2019104251"
+            # URLが正しいことを確認（新エンドポイント）
+            expected_url = "https://db.netkeiba.com/horse/ajax_horse_pedigree.html"
             assert call_args[0][0] == expected_url
 
-            # パラメータが正しいことを確認
+            # パラメータが正しいことを確認（新パラメータ形式）
             assert "params" in call_args[1]
-            assert call_args[1]["params"] == {"type": "ajax"}
+            assert call_args[1]["params"] == {
+                "input": "UTF-8",
+                "output": "json",
+                "id": "2019104251",
+            }
 
             # User-Agentヘッダーが設定されていることを確認
             assert "headers" in call_args[1]
@@ -343,3 +347,136 @@ class TestFetchHorseDetailAjaxIntegration:
         # Assert - キャリア情報も取得できている
         assert result["total_races"] == 3
         assert result["total_wins"] == 2
+
+
+# =============================================================================
+# Task #3: 新AJAX APIエンドポイントテスト
+# =============================================================================
+
+
+class TestFetchPedigreeAjaxNewEndpoint:
+    """新AJAXエンドポイントのURL・パラメータ確認テスト"""
+
+    @pytest.fixture
+    def scraper(self):
+        """HorseDetailScraperインスタンスを返す"""
+        return HorseDetailScraper(delay=0)
+
+    def test_fetch_pedigree_ajax_uses_new_endpoint(self, scraper):
+        """新エンドポイントURLを使用する"""
+        with patch.object(scraper.session, "get") as mock_get:
+            mock_response = Mock()
+            mock_response.json.return_value = {
+                "status": "OK",
+                "data": "<div>test</div>",
+            }
+            mock_response.raise_for_status = Mock()
+            mock_get.return_value = mock_response
+
+            scraper._fetch_pedigree_ajax("2019104251")
+
+            call_args = mock_get.call_args
+            expected_url = "https://db.netkeiba.com/horse/ajax_horse_pedigree.html"
+            assert call_args[0][0] == expected_url
+
+    def test_fetch_pedigree_ajax_sends_new_params(self, scraper):
+        """新パラメータ形式 (input, output, id) を送信する"""
+        with patch.object(scraper.session, "get") as mock_get:
+            mock_response = Mock()
+            mock_response.json.return_value = {
+                "status": "OK",
+                "data": "<div>test</div>",
+            }
+            mock_response.raise_for_status = Mock()
+            mock_get.return_value = mock_response
+
+            scraper._fetch_pedigree_ajax("2019104251")
+
+            call_args = mock_get.call_args
+            assert "params" in call_args[1]
+            assert call_args[1]["params"] == {
+                "input": "UTF-8",
+                "output": "json",
+                "id": "2019104251",
+            }
+
+
+# =============================================================================
+# Task #3: 新HTML構造 + AJAX 統合テスト
+# =============================================================================
+
+
+@pytest.fixture
+def new_html_without_blood_table():
+    """新HTML構造のフィクスチャ（classなしh1、年齢なしtxt_01）"""
+    from pathlib import Path
+
+    fixture_path = Path(__file__).parent.parent / "fixtures" / "horse_detail_new.html"
+    return fixture_path.read_text(encoding="utf-8")
+
+
+class TestFetchHorseDetailNewHtmlIntegration:
+    """新HTML構造 + AJAX血統取得の統合テスト"""
+
+    @patch.object(HorseDetailScraper, "fetch")
+    @patch.object(HorseDetailScraper, "_fetch_pedigree_ajax")
+    def test_new_html_triggers_ajax_and_returns_full_data(
+        self,
+        mock_fetch_pedigree_ajax,
+        mock_fetch,
+        new_html_without_blood_table,
+        ajax_pedigree_html_fragment,
+    ):
+        """新HTML構造 + AJAX成功 = プロフィール + 血統の全データ返却"""
+        # Arrange
+        scraper = HorseDetailScraper(delay=0)
+        mock_fetch.return_value = new_html_without_blood_table
+        mock_fetch_pedigree_ajax.return_value = ajax_pedigree_html_fragment
+
+        # Act
+        result = scraper.fetch_horse_detail(horse_id="2021999999")
+
+        # Assert - AJAXが呼び出された
+        mock_fetch_pedigree_ajax.assert_called_once_with("2021999999")
+
+        # Assert - 新HTML構造からプロフィール取得
+        assert result["name"] == "テスト馬名"
+        assert result["sex"] == "牝"
+        assert result["birth_year"] == 2021
+
+        # Assert - AJAX結果から血統取得
+        assert result["sire"] == "ハーツクライ"
+        assert result["dam"] == "ダストアンドダイヤモンズ"
+        assert result["dam_sire"] == "Vindication"
+
+    @patch.object(HorseDetailScraper, "fetch")
+    @patch.object(HorseDetailScraper, "_fetch_pedigree_ajax")
+    def test_new_html_with_ajax_failure_returns_profile_only(
+        self,
+        mock_fetch_pedigree_ajax,
+        mock_fetch,
+        new_html_without_blood_table,
+    ):
+        """新HTML構造 + AJAX失敗 = プロフィールのみ返却 + 警告"""
+        # Arrange
+        scraper = HorseDetailScraper(delay=0)
+        mock_fetch.return_value = new_html_without_blood_table
+        mock_fetch_pedigree_ajax.return_value = None  # AJAX失敗
+
+        # Act
+        result = scraper.fetch_horse_detail(horse_id="2021999999")
+
+        # Assert - プロフィール情報は取得できている
+        assert result["name"] == "テスト馬名"
+        assert result["sex"] == "牝"
+        assert result["birth_year"] == 2021
+
+        # Assert - 血統情報は取得できていない
+        assert "sire" not in result
+        assert "dam" not in result
+
+        # Assert - 警告が含まれている
+        assert any(
+            "ajax" in w.lower() or "pedigree" in w.lower()
+            for w in result["parse_warnings"]
+        )

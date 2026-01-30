@@ -1,6 +1,6 @@
 # Architecture Codemap
 
-> Freshness: 2026-01-29 (Line counts verified, simulator refactoring, scraper updates)
+> Freshness: 2026-01-30 (Line counts verified, horse_detail AJAX pedigree, venue_filter expansion)
 
 ## System Overview
 
@@ -10,9 +10,9 @@ keiba/                        # 競馬データ収集・分析CLI
 |   +-- __init__.py           # main, 後方互換性エクスポート (122行)
 |   +-- commands/             # CLIコマンドモジュール
 |   |   +-- __init__.py       # exports (5行)
-|   |   +-- scrape.py         # scrape, scrape-horses (429行)
+|   |   +-- scrape.py         # scrape, scrape-horses (421行)
 |   |   +-- analyze.py        # analyze (623行)
-|   |   +-- predict.py        # predict, predict-day (315行)
+|   |   +-- predict.py        # predict, predict-day (314行)
 |   |   +-- train.py          # train (78行)
 |   |   +-- review.py         # review-day (206行)
 |   |   +-- backtest.py       # backtest, backtest-fukusho/tansho/umaren/sanrenpuku/all (528行)
@@ -29,7 +29,7 @@ keiba/                        # 競馬データ収集・分析CLI
 |       +-- model_resolver.py  # MLモデル解決 (18行)
 |       +-- table_printer.py   # テーブル出力 (215行)
 |       +-- table_formatter.py # バックテスト結果テーブル整形 (160行)
-|       +-- venue_filter.py    # 会場フィルタリング (27行)
+|       +-- venue_filter.py    # 会場フィルタリング (44行)
 +-- cli.py                    # 後方互換性（レガシー、2606行）
 +-- db.py                     # DB接続・セッション管理 (75行)
 +-- constants.py              # 定数定義 (44行)
@@ -43,7 +43,7 @@ keiba/                        # 競馬データ収集・分析CLI
 |   +-- base.py               # BaseScraper（グローバルレートリミッタ・指数バックオフ） (188行)
 |   +-- race_list.py          # RaceListScraper (106行)
 |   +-- race_detail.py        # RaceDetailScraper (853行)
-|   +-- horse_detail.py       # HorseDetailScraper（パース警告対応） (361行)
+|   +-- horse_detail.py       # HorseDetailScraper（パース警告・AJAX血統取得対応） (367行)
 |   +-- shutuba.py            # ShutubaScraper (356行)
 +-- services/                 # ビジネスロジックサービス
 |   +-- __init__.py           # exports (21行)
@@ -360,16 +360,17 @@ tests/
 +-- test_pedigree_factor.py          # 血統ファクターテスト
 +-- test_running_style_factor.py     # 脚質ファクターテスト
 +-- test_integration_new_factors.py  # 新規ファクター統合テスト
-+-- test_factor_consistency.py       # ファクター整合性テスト
++-- test_cli_backtest_fukusho.py     # 複勝バックテストCLIテスト（ルート）
 +-- cli/                             # CLIコマンドテスト
 |   +-- __init__.py
 |   +-- test_predict_day.py          # predict-dayコマンドテスト
 |   +-- test_review_day.py           # review-dayコマンドテスト
 |   +-- test_predict_review.py       # predict/review統合テスト
 |   +-- test_train_command.py        # trainコマンドテスト
+|   +-- test_backtest.py             # backtest CLIテスト
 |   +-- test_backtest_all.py         # backtest-allコマンドテスト
 |   +-- test_scrape_horses.py        # scrape-horsesコマンドテスト
-|   +-- test_cli_backtest_fukusho.py # 複勝バックテストCLIテスト
+|   +-- test_date_parser.py          # 日付パーステスト
 |   +-- utils/                       # CLIユーティリティテスト
 |       +-- test_date_range.py       # 日付範囲計算テスト
 |       +-- test_model_resolver.py   # MLモデル解決テスト
@@ -384,12 +385,16 @@ tests/
 |   +-- test_base_fetch_json.py      # JSON取得テスト
 |   +-- test_update_horse.py         # 馬詳細更新テスト
 |   +-- test_horse_pedigree_ajax.py  # 馬血統Ajax取得テスト
+|   +-- test_horse_detail_new_html.py # 馬詳細新HTML対応テスト
+|   +-- test_race_id_resolver.py     # レースID解決テスト
+|   +-- test_race_list_sub.py        # レース一覧サブテスト
 |   +-- test_url_parser.py           # URL解析テスト
 +-- services/                        # サービステスト
 |   +-- __init__.py
 |   +-- test_prediction_service.py   # 予測サービステスト
 |   +-- test_past_stats_calculator.py # 過去成績統計テスト
 |   +-- test_training_service.py     # 学習データ構築テスト
+|   +-- test_factor_consistency.py   # ファクター整合性テスト
 +-- models/                          # モデルテスト
 |   +-- __init__.py
 |   +-- test_entry.py                # 出馬表DTOテスト
@@ -415,6 +420,8 @@ tests/
 |   +-- test_umaren_simulator.py     # 馬連シミュレータテスト
 |   +-- test_sanrenpuku_simulator.py # 三連複シミュレータテスト
 |   +-- test_simulator_scraper_reuse.py # シミュレータスクレイパー再利用テスト
++-- scripts/
+|   +-- test_factor_importance.py    # ファクター重要度テスト
 +-- config/
 |   +-- test_weights.py              # ファクター重みテスト
 +-- repositories/

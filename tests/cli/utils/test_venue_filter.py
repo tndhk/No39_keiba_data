@@ -2,7 +2,7 @@
 
 import pytest
 
-from keiba.cli.utils.venue_filter import get_race_ids_for_venue
+from keiba.cli.utils.venue_filter import filter_race_ids_by_venue, get_race_ids_for_venue
 
 
 def test_get_race_ids_for_venue_filters_correctly():
@@ -64,6 +64,54 @@ def test_get_race_ids_for_venue_ignores_invalid_urls():
     ]
 
     result = get_race_ids_for_venue(race_urls, "06")
+
+    assert len(result) == 1
+    assert "202406010101" in result
+
+
+def test_filter_race_ids_by_venue_filters_correctly():
+    """レースIDリストを指定競馬場でフィルタリングできること"""
+    race_ids = [
+        "202406010101",  # 中山（06）
+        "202405010201",  # 東京（05）
+        "202406020101",  # 中山（06）
+        "202409010101",  # 阪神（09）
+    ]
+
+    # 中山（コード "06"）でフィルタ
+    result = filter_race_ids_by_venue(race_ids, "06")
+
+    assert len(result) == 2
+    assert "202406010101" in result
+    assert "202406020101" in result
+    assert "202405010201" not in result
+    assert "202409010101" not in result
+
+
+def test_filter_race_ids_by_venue_empty_result():
+    """該当する競馬場がない場合、空リストを返すこと"""
+    race_ids = [
+        "202406010101",  # 中山（06）
+        "202405010201",  # 東京（05）
+    ]
+
+    # 札幌（コード "01"）でフィルタ → 該当なし
+    result = filter_race_ids_by_venue(race_ids, "01")
+
+    assert len(result) == 0
+    assert result == []
+
+
+def test_filter_race_ids_by_venue_handles_invalid_race_ids():
+    """無効なrace_id（長さ不足）はスキップされること"""
+    race_ids = [
+        "202406010101",  # 有効
+        "12345",  # 無効（短い）
+        "",  # 無効（空）
+        "202405010201",  # 有効
+    ]
+
+    result = filter_race_ids_by_venue(race_ids, "06")
 
     assert len(result) == 1
     assert "202406010101" in result

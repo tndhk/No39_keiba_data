@@ -187,6 +187,11 @@ keiba scrape-horses --db data/keiba.db --limit 500 -v
 - `--verbose` / `-v` オプションで警告の詳細がCLI出力に表示される
 - 警告が頻出する場合はnetkeibaのHTML構造変更を確認し、パーサーを更新する
 
+AJAX血統取得:
+- `HorseDetailScraper` は馬詳細ページの血統テーブル(`blood_table`)からの取得に加え、AJAX APIによる血統情報取得にも対応
+- `PEDIGREE_AJAX_URL = https://db.netkeiba.com/horse/ajax_horse_pedigree.html` へリクエスト
+- メインページから血統情報が取得できない場合のフォールバックとして動作
+
 ### グレード情報のマイグレーション
 
 既存レースにグレード情報（G1/G2/G3/L/OP等）を追加。
@@ -493,7 +498,18 @@ pip install lightgbm
 keiba analyze --db data/keiba.db --date 2024-01-06 --venue 中山 --no-predict
 ```
 
-### 9. バックテストが遅い
+### 9. 血統AJAX取得が失敗する
+
+症状: 馬詳細取得時に `blood_table` 警告が出て血統情報がNullのままになる
+
+原因: netkeibaの馬詳細ページでHTML構造が変更され、かつAJAX APIからも取得できない
+
+解決:
+- `keiba/scrapers/horse_detail.py` の `_fetch_pedigree_ajax()` メソッドのURLやパラメータを確認
+- `--verbose` オプションで詳細な警告内容を確認
+- `parse_warnings` の内容から原因を特定し、パーサーを修正
+
+### 10. バックテストが遅い
 
 症状: バックテストに時間がかかりすぎる
 
@@ -561,4 +577,4 @@ DELETE FROM races WHERE id LIKE '202403%';
 ```
 
 ---
-Freshness: 2026-01-29
+Freshness: 2026-01-30

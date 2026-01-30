@@ -4,7 +4,6 @@
 """
 
 import calendar
-import re
 from datetime import date, datetime
 
 import click
@@ -12,11 +11,12 @@ from sqlalchemy import or_
 
 from keiba.cli.utils.date_parser import parse_race_date
 from keiba.cli.utils.url_parser import extract_race_id_from_url
-from keiba.cli.utils.venue_filter import get_race_ids_for_venue
+from keiba.cli.utils.venue_filter import filter_race_ids_by_venue, get_race_ids_for_venue
 from keiba.constants import VENUE_CODE_MAP
 from keiba.db import get_engine, get_session, init_db
 from keiba.models import Horse, Jockey, Race, RaceResult, Trainer
 from keiba.scrapers import HorseDetailScraper, RaceDetailScraper, RaceListScraper
+from keiba.scrapers.race_id_resolver import fetch_race_ids_for_date
 from keiba.scrapers.shutuba import ShutubaScraper
 
 
@@ -210,9 +210,8 @@ def _collect_horses_from_shutuba(
         return []
 
     # レース一覧を取得
-    race_list_scraper = RaceListScraper()
     try:
-        race_urls = race_list_scraper.fetch_race_urls(
+        race_ids = fetch_race_ids_for_date(
             target_date.year, target_date.month, target_date.day, jra_only=True
         )
     except Exception as e:
@@ -225,14 +224,7 @@ def _collect_horses_from_shutuba(
             click.echo(f"無効な競馬場名: {venue}")
             return []
         venue_code = VENUE_CODE_MAP[venue]
-        race_ids = get_race_ids_for_venue(race_urls, venue_code)
-    else:
-        # 全JRAレースのrace_idを抽出
-        race_ids = []
-        for url in race_urls:
-            match = re.search(r"/race/(\d{12})/?", url)
-            if match:
-                race_ids.append(match.group(1))
+        race_ids = filter_race_ids_by_venue(race_ids, venue_code)
 
     click.echo(f"対象レース数: {len(race_ids)}")
 

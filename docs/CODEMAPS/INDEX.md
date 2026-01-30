@@ -1,6 +1,6 @@
 # Codemaps Index
 
-> Freshness: 2026-01-29 (Line counts verified, simulator refactoring, scraper updates)
+> Freshness: 2026-01-30 (Line counts verified, horse_detail AJAX pedigree, venue_filter expansion)
 
 競馬データ収集システムのコードマップ一覧。
 
@@ -24,9 +24,9 @@ keiba/                           # 競馬データ収集・分析CLI
 +-- cli/                         # CLIパッケージ (Click)
 |   +-- __init__.py              # main, 後方互換性エクスポート (122行)
 |   +-- commands/                # CLIコマンドモジュール
-|   |   +-- scrape.py            # scrape, scrape-horses (429行)
+|   |   +-- scrape.py            # scrape, scrape-horses (421行)
 |   |   +-- analyze.py           # analyze (623行)
-|   |   +-- predict.py           # predict, predict-day (315行)
+|   |   +-- predict.py           # predict, predict-day (314行)
 |   |   +-- train.py             # train (78行)
 |   |   +-- review.py            # review-day (206行)
 |   |   +-- backtest.py          # backtest, backtest-fukusho/tansho/umaren/sanrenpuku/all (528行)
@@ -41,7 +41,7 @@ keiba/                           # 競馬データ収集・分析CLI
 |       +-- model_resolver.py    # MLモデル解決 (18行)
 |       +-- table_printer.py     # テーブル出力 (215行)
 |       +-- table_formatter.py   # バックテスト結果テーブル整形 (160行)
-|       +-- venue_filter.py      # 会場フィルタリング (27行)
+|       +-- venue_filter.py      # 会場フィルタリング (44行)
 |
 +-- cli.py                       # 後方互換性エントリ (2606行, レガシー)
 |
@@ -57,7 +57,7 @@ keiba/                           # 競馬データ収集・分析CLI
 +-- scrapers/                    # Webスクレイパー
 |   +-- race_list.py             # レース一覧取得 (106行)
 |   +-- race_detail.py           # レース詳細取得 (853行)
-|   +-- horse_detail.py          # 馬詳細取得（パース警告対応） (361行)
+|   +-- horse_detail.py          # 馬詳細取得（パース警告・AJAX血統取得対応） (367行)
 |   +-- shutuba.py               # 出馬表取得 (356行)
 |   +-- base.py                  # 基底クラス（グローバルレートリミッタ・指数バックオフ） (188行)
 |

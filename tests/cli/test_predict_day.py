@@ -292,17 +292,17 @@ class TestPredictDayExecution:
     """predict-dayコマンドの実行テスト"""
 
     @patch("keiba.cli.commands.predict.ShutubaScraper")
-    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.fetch_race_ids_for_date")
     @patch("keiba.cli.commands.predict.get_session")
     @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_day_fetches_race_list(
         self,
         mock_get_engine,
         mock_get_session,
-        mock_race_list_scraper,
+        mock_fetch_race_ids,
         mock_shutuba_scraper,
     ):
-        """predict-dayはRaceListScraperでレース一覧を取得する"""
+        """predict-dayはfetch_race_ids_for_dateでレース一覧を取得する"""
         # Setup mocks
         mock_engine = MagicMock()
         mock_get_engine.return_value = mock_engine
@@ -310,9 +310,7 @@ class TestPredictDayExecution:
         mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
-        mock_scraper = MagicMock()
-        mock_scraper.fetch_race_urls.return_value = []
-        mock_race_list_scraper.return_value = mock_scraper
+        mock_fetch_race_ids.return_value = []
 
         runner = CliRunner()
         with runner.isolated_filesystem():
@@ -329,19 +327,19 @@ class TestPredictDayExecution:
                 ],
             )
 
-        # RaceListScraperが呼ばれたことを確認
-        mock_scraper.fetch_race_urls.assert_called_once_with(2026, 1, 24, jra_only=True)
+        # fetch_race_ids_for_dateが呼ばれたことを確認
+        mock_fetch_race_ids.assert_called_once_with(2026, 1, 24, jra_only=True)
 
     @patch("keiba.cli.commands.predict.PredictionService")
     @patch("keiba.cli.commands.predict.ShutubaScraper")
-    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.fetch_race_ids_for_date")
     @patch("keiba.cli.commands.predict.get_session")
     @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_day_filters_by_venue(
         self,
         mock_get_engine,
         mock_get_session,
-        mock_race_list_scraper,
+        mock_fetch_race_ids,
         mock_shutuba_scraper,
         mock_prediction_service,
     ):
@@ -354,13 +352,11 @@ class TestPredictDayExecution:
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
         # Mock race list with mixed venues
-        mock_list_scraper = MagicMock()
-        mock_list_scraper.fetch_race_urls.return_value = [
-            "https://db.netkeiba.com/race/202606010801/",  # 中山
-            "https://db.netkeiba.com/race/202606010802/",  # 中山
-            "https://db.netkeiba.com/race/202605010801/",  # 東京
+        mock_fetch_race_ids.return_value = [
+            "202606010801",  # 中山
+            "202606010802",  # 中山
+            "202605010801",  # 東京
         ]
-        mock_race_list_scraper.return_value = mock_list_scraper
 
         # Mock shutuba scraper - create a proper mock for each fetch_shutuba call
         mock_shutuba = MagicMock()
@@ -403,14 +399,14 @@ class TestPredictDayExecution:
     @patch("keiba.cli.commands.predict.save_predictions_markdown")
     @patch("keiba.cli.commands.predict.PredictionService")
     @patch("keiba.cli.commands.predict.ShutubaScraper")
-    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.fetch_race_ids_for_date")
     @patch("keiba.cli.commands.predict.get_session")
     @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_day_saves_markdown(
         self,
         mock_get_engine,
         mock_get_session,
-        mock_race_list_scraper,
+        mock_fetch_race_ids,
         mock_shutuba_scraper,
         mock_prediction_service,
         mock_save_markdown,
@@ -423,11 +419,9 @@ class TestPredictDayExecution:
         mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
-        mock_list_scraper = MagicMock()
-        mock_list_scraper.fetch_race_urls.return_value = [
-            "https://db.netkeiba.com/race/202606010801/",
+        mock_fetch_race_ids.return_value = [
+            "202606010801",
         ]
-        mock_race_list_scraper.return_value = mock_list_scraper
 
         mock_shutuba = MagicMock()
         mock_shutuba.fetch_shutuba.return_value = MagicMock(
@@ -470,14 +464,14 @@ class TestPredictDayExecution:
     @patch("keiba.cli.commands.predict.save_predictions_markdown")
     @patch("keiba.cli.commands.predict.PredictionService")
     @patch("keiba.cli.commands.predict.ShutubaScraper")
-    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.fetch_race_ids_for_date")
     @patch("keiba.cli.commands.predict.get_session")
     @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_day_shows_summary(
         self,
         mock_get_engine,
         mock_get_session,
-        mock_race_list_scraper,
+        mock_fetch_race_ids,
         mock_shutuba_scraper,
         mock_prediction_service,
         mock_save_markdown,
@@ -490,11 +484,9 @@ class TestPredictDayExecution:
         mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
-        mock_list_scraper = MagicMock()
-        mock_list_scraper.fetch_race_urls.return_value = [
-            "https://db.netkeiba.com/race/202606010801/",
+        mock_fetch_race_ids.return_value = [
+            "202606010801",
         ]
-        mock_race_list_scraper.return_value = mock_list_scraper
 
         mock_shutuba = MagicMock()
         mock_shutuba.fetch_shutuba.return_value = MagicMock(
@@ -545,14 +537,14 @@ class TestPredictDayNoMl:
     @patch("keiba.cli.commands.predict.save_predictions_markdown")
     @patch("keiba.cli.commands.predict.PredictionService")
     @patch("keiba.cli.commands.predict.ShutubaScraper")
-    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.fetch_race_ids_for_date")
     @patch("keiba.cli.commands.predict.get_session")
     @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_day_with_no_ml_skips_ml_prediction(
         self,
         mock_get_engine,
         mock_get_session,
-        mock_race_list_scraper,
+        mock_fetch_race_ids,
         mock_shutuba_scraper,
         mock_prediction_service,
         mock_save_markdown,
@@ -565,11 +557,9 @@ class TestPredictDayNoMl:
         mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
-        mock_list_scraper = MagicMock()
-        mock_list_scraper.fetch_race_urls.return_value = [
-            "https://db.netkeiba.com/race/202606010801/",
+        mock_fetch_race_ids.return_value = [
+            "202606010801",
         ]
-        mock_race_list_scraper.return_value = mock_list_scraper
 
         mock_shutuba = MagicMock()
         mock_shutuba.fetch_shutuba.return_value = MagicMock(
@@ -616,14 +606,14 @@ class TestPredictDayModelAutoDetection:
     @patch("keiba.cli.commands.predict.save_predictions_markdown")
     @patch("keiba.cli.commands.predict.PredictionService")
     @patch("keiba.cli.commands.predict.ShutubaScraper")
-    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.fetch_race_ids_for_date")
     @patch("keiba.cli.commands.predict.get_session")
     @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_day_uses_model_if_exists(
         self,
         mock_get_engine,
         mock_get_session,
-        mock_race_list_scraper,
+        mock_fetch_race_ids,
         mock_shutuba_scraper,
         mock_prediction_service,
         mock_save_markdown,
@@ -637,11 +627,9 @@ class TestPredictDayModelAutoDetection:
         mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
-        mock_list_scraper = MagicMock()
-        mock_list_scraper.fetch_race_urls.return_value = [
-            "https://db.netkeiba.com/race/202606010801/",
+        mock_fetch_race_ids.return_value = [
+            "202606010801",
         ]
-        mock_race_list_scraper.return_value = mock_list_scraper
 
         mock_shutuba = MagicMock()
         mock_shutuba.fetch_shutuba.return_value = MagicMock(
@@ -686,14 +674,14 @@ class TestPredictDayModelAutoDetection:
     @patch("keiba.cli.commands.predict.save_predictions_markdown")
     @patch("keiba.cli.commands.predict.PredictionService")
     @patch("keiba.cli.commands.predict.ShutubaScraper")
-    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.fetch_race_ids_for_date")
     @patch("keiba.cli.commands.predict.get_session")
     @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_day_works_without_model(
         self,
         mock_get_engine,
         mock_get_session,
-        mock_race_list_scraper,
+        mock_fetch_race_ids,
         mock_shutuba_scraper,
         mock_prediction_service,
         mock_save_markdown,
@@ -707,11 +695,9 @@ class TestPredictDayModelAutoDetection:
         mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
-        mock_list_scraper = MagicMock()
-        mock_list_scraper.fetch_race_urls.return_value = [
-            "https://db.netkeiba.com/race/202606010801/",
+        mock_fetch_race_ids.return_value = [
+            "202606010801",
         ]
-        mock_race_list_scraper.return_value = mock_list_scraper
 
         mock_shutuba = MagicMock()
         mock_shutuba.fetch_shutuba.return_value = MagicMock(
@@ -947,14 +933,14 @@ class TestPredictDayDebutRaceSkip:
     @patch("keiba.cli.commands.predict.save_predictions_markdown")
     @patch("keiba.cli.commands.predict.PredictionService")
     @patch("keiba.cli.commands.predict.ShutubaScraper")
-    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.fetch_race_ids_for_date")
     @patch("keiba.cli.commands.predict.get_session")
     @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_day_shows_skip_message_for_debut_race(
         self,
         mock_get_engine,
         mock_get_session,
-        mock_race_list_scraper,
+        mock_fetch_race_ids,
         mock_shutuba_scraper,
         mock_prediction_service,
         mock_save_markdown,
@@ -967,11 +953,9 @@ class TestPredictDayDebutRaceSkip:
         mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
-        mock_list_scraper = MagicMock()
-        mock_list_scraper.fetch_race_urls.return_value = [
-            "https://db.netkeiba.com/race/202606010801/",  # 中山
+        mock_fetch_race_ids.return_value = [
+            "202606010801",  # 中山
         ]
-        mock_race_list_scraper.return_value = mock_list_scraper
 
         # ShutubaScraper のモック（新馬戦）
         mock_shutuba = MagicMock()
@@ -1013,14 +997,14 @@ class TestPredictDayDebutRaceSkip:
     @patch("keiba.cli.commands.predict.save_predictions_markdown")
     @patch("keiba.cli.commands.predict.PredictionService")
     @patch("keiba.cli.commands.predict.ShutubaScraper")
-    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.fetch_race_ids_for_date")
     @patch("keiba.cli.commands.predict.get_session")
     @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_day_sets_skipped_flag_for_debut_race(
         self,
         mock_get_engine,
         mock_get_session,
-        mock_race_list_scraper,
+        mock_fetch_race_ids,
         mock_shutuba_scraper,
         mock_prediction_service,
         mock_save_markdown,
@@ -1033,11 +1017,9 @@ class TestPredictDayDebutRaceSkip:
         mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
-        mock_list_scraper = MagicMock()
-        mock_list_scraper.fetch_race_urls.return_value = [
-            "https://db.netkeiba.com/race/202606010801/",  # 中山
+        mock_fetch_race_ids.return_value = [
+            "202606010801",  # 中山
         ]
-        mock_race_list_scraper.return_value = mock_list_scraper
 
         # ShutubaScraper のモック（新馬戦）
         mock_shutuba = MagicMock()
@@ -1087,14 +1069,14 @@ class TestPredictDayDebutRaceSkip:
     @patch("keiba.cli.commands.predict.save_predictions_markdown")
     @patch("keiba.cli.commands.predict.PredictionService")
     @patch("keiba.cli.commands.predict.ShutubaScraper")
-    @patch("keiba.cli.commands.predict.RaceListScraper")
+    @patch("keiba.cli.commands.predict.fetch_race_ids_for_date")
     @patch("keiba.cli.commands.predict.get_session")
     @patch("keiba.cli.commands.predict.get_engine")
     def test_predict_day_sets_skipped_false_for_normal_race(
         self,
         mock_get_engine,
         mock_get_session,
-        mock_race_list_scraper,
+        mock_fetch_race_ids,
         mock_shutuba_scraper,
         mock_prediction_service,
         mock_save_markdown,
@@ -1107,11 +1089,9 @@ class TestPredictDayDebutRaceSkip:
         mock_get_session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
-        mock_list_scraper = MagicMock()
-        mock_list_scraper.fetch_race_urls.return_value = [
-            "https://db.netkeiba.com/race/202606010801/",  # 中山
+        mock_fetch_race_ids.return_value = [
+            "202606010801",  # 中山
         ]
-        mock_race_list_scraper.return_value = mock_list_scraper
 
         # ShutubaScraper のモック（通常レース）
         mock_shutuba = MagicMock()

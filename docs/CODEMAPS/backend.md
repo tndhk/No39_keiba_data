@@ -1,6 +1,6 @@
 # Backend Codemap
 
-> Freshness: 2026-01-29 (Line counts verified, simulator refactoring, scraper updates)
+> Freshness: 2026-01-30 (Line counts verified, horse_detail AJAX pedigree, venue_filter expansion)
 
 ## Overview
 
@@ -11,13 +11,13 @@
 ### Package Structure
 
 ```
-keiba/cli/                       # 2954行合計
+keiba/cli/                       # 3581行合計
 +-- __init__.py                  # main, 後方互換性エクスポート (122行)
-+-- commands/                    # CLIコマンドモジュール (2234行)
++-- commands/                    # CLIコマンドモジュール (2225行)
 |   +-- __init__.py              # exports (5行)
-|   +-- scrape.py                # scrape, scrape-horses (429行)
+|   +-- scrape.py                # scrape, scrape-horses (421行)
 |   +-- analyze.py               # analyze (623行)
-|   +-- predict.py               # predict, predict-day (315行)
+|   +-- predict.py               # predict, predict-day (314行)
 |   +-- train.py                 # train (78行)
 |   +-- review.py                # review-day (206行)
 |   +-- backtest.py              # backtest, backtest-fukusho/tansho/umaren/sanrenpuku/all (528行)
@@ -26,7 +26,7 @@ keiba/cli/                       # 2954行合計
 |   +-- __init__.py              # exports (13行)
 |   +-- markdown.py              # Markdown保存/パース/追記 (334行)
 |   +-- simulation.py            # 馬券シミュレーション計算 (338行)
-+-- utils/                       # ユーティリティ (532行)
++-- utils/                       # ユーティリティ (549行)
     +-- __init__.py              # empty (0行)
     +-- url_parser.py            # URL解析 (33行)
     +-- date_parser.py           # 日付パース (33行)
@@ -34,7 +34,7 @@ keiba/cli/                       # 2954行合計
     +-- model_resolver.py        # MLモデル解決 (18行)
     +-- table_printer.py         # テーブル出力 (215行)
     +-- table_formatter.py       # バックテスト結果テーブル整形 (160行)
-    +-- venue_filter.py          # 会場フィルタリング (27行)
+    +-- venue_filter.py          # 会場フィルタリング (44行)
 ```
 
 ### Entry Point
@@ -66,10 +66,10 @@ main.add_command(migrate_grades)  # from commands/migrate.py
 
 | Command | File | Lines | Description |
 |---------|------|-------|-------------|
-| scrape | commands/scrape.py | 429 | レースデータ収集（年月指定） |
+| scrape | commands/scrape.py | 421 | レースデータ収集（年月指定） |
 | scrape-horses | commands/scrape.py | - | 馬詳細データ収集 |
 | analyze | commands/analyze.py | 623 | レース分析 + ML予測 |
-| predict | commands/predict.py | 315 | 出馬表URLから予測 |
+| predict | commands/predict.py | 314 | 出馬表URLから予測 |
 | predict-day | commands/predict.py | - | 指定日・競馬場の全レース予測 |
 | review-day | commands/review.py | 206 | 予測結果と実績比較（複勝・単勝・馬連・三連複シミュレーション） |
 | migrate-grades | commands/migrate.py | 50 | グレード情報マイグレーション |
@@ -110,7 +110,7 @@ main.add_command(migrate_grades)  # from commands/migrate.py
 | model_resolver.py | 18 | `resolve_model_path()` | MLモデルパス解決（--model/自動検索） |
 | table_printer.py | 215 | `print_score_table()`, `print_score_table_with_ml()`, `print_prediction_table()` | テーブル出力 |
 | table_formatter.py | 160 | バックテスト結果テーブル整形関数 | バックテスト結果の表整形 |
-| venue_filter.py | 27 | 会場フィルタリング関数 | 会場名のフィルタリング |
+| venue_filter.py | 44 | 会場フィルタリング関数 | 会場名のフィルタリング |
 
 ### Backward Compatibility
 
@@ -257,7 +257,7 @@ class SQLAlchemyRaceResultRepository:
 
 ## Scrapers (keiba/scrapers/)
 
-### Structure (1881行+)
+### Structure (1891行)
 
 ```
 keiba/scrapers/
@@ -265,7 +265,7 @@ keiba/scrapers/
 +-- base.py              # BaseScraper（グローバルレートリミッタ・指数バックオフ） (188行)
 +-- race_list.py         # RaceListScraper (106行)
 +-- race_detail.py       # RaceDetailScraper (853行)
-+-- horse_detail.py      # HorseDetailScraper（パース警告対応） (361行)
++-- horse_detail.py      # HorseDetailScraper（パース警告・AJAX血統取得対応） (367行)
 +-- shutuba.py           # ShutubaScraper (356行)
 ```
 
@@ -301,16 +301,22 @@ class BaseScraper:
 - `finally` ブロック: `_last_request_time`（インスタンス）と `_global_last_request_time`（クラス）の両方を更新
 - HTTP 403/429/503: 5秒 -> 10秒 -> 30秒の指数バックオフでリトライ
 
-### HorseDetailScraper (280行) -- パース警告
+### HorseDetailScraper (367行) -- パース警告 + AJAX血統取得
 
 ```python
 class HorseDetailScraper(BaseScraper):
+    BASE_URL = "https://db.netkeiba.com/horse/"
+    PEDIGREE_AJAX_URL = "https://db.netkeiba.com/horse/ajax_horse_pedigree.html"
+
     def parse(self, soup) -> dict:
         """パース結果に parse_warnings リストを含む
 
         Returns:
             {"id": str, "name": str, ..., "parse_warnings": list[str]}
         """
+
+    def _fetch_pedigree_ajax(self, horse_id: str) -> str | None:
+        """AJAX APIから血統テーブルHTMLを取得（フォールバック）"""
 ```
 
 ### RaceListScraper (106行)
@@ -611,10 +617,10 @@ FACTOR_WEIGHTS = {
 
 | Category | Total Lines | Files |
 |----------|-------------|-------|
-| CLI Package | 2954 | 18 |
+| CLI Package | 3581 | 20 |
 | Services | 956 | 5 |
 | Repositories | 133 | 2 |
-| Scrapers | 1881 | 6 |
+| Scrapers | 1891 | 6 |
 | ML | 409 | 5 |
 | Backtest | 2640 | 11 |
 | Analyzers | 597 | 9 |
