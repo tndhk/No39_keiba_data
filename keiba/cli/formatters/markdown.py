@@ -142,18 +142,18 @@ def parse_predictions_markdown(filepath: str) -> dict:
     for line in lines:
         line = line.strip()
 
-        # レースヘッダー（## 1R テストレース）
-        if line.startswith("## ") and "R " in line:
+        # レースヘッダー（## 1R テストレース または ## 0R）
+        if line.startswith("## ") and "R" in line:
             # 前のレースがあれば保存
             if current_race is not None:
                 result["races"].append(current_race)
 
             # レース番号とレース名を抽出
             race_header = line[3:]  # "## "を除去
-            race_match = re.match(r"(\d+)R\s+(.+)", race_header)
+            race_match = re.match(r"(\d+)R\s*(.*)", race_header)
             if race_match:
                 race_number = int(race_match.group(1))
-                race_name = race_match.group(2)
+                race_name = race_match.group(2) if race_match.group(2) else ""
             else:
                 race_number = 0
                 race_name = race_header
@@ -172,7 +172,14 @@ def parse_predictions_markdown(filepath: str) -> dict:
         elif line.startswith("race_id:") and current_race is not None:
             race_id_match = re.match(r"race_id:\s*(\d+)", line)
             if race_id_match:
-                current_race["race_id"] = race_id_match.group(1)
+                race_id = race_id_match.group(1)
+                current_race["race_id"] = race_id
+                # race_numberが0の場合、race_idから推測
+                if current_race["race_number"] == 0 and len(race_id) == 12:
+                    # race_idの形式: YYYYKKCCDDRR (RR=レース番号, 10-11桁目)
+                    race_num_from_id = int(race_id[10:12])
+                    if race_num_from_id > 0:
+                        current_race["race_number"] = race_num_from_id
 
         # skipped行を検出（skipped: true）
         elif line.startswith("skipped:") and current_race is not None:

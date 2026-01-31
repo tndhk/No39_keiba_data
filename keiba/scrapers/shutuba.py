@@ -45,6 +45,11 @@ class ShutubaScraper(BaseScraper):
         soup = self.get_soup(html)
 
         race_info = self._parse_race_info(soup, race_id)
+
+        # Fallback: Extract race_number from race_id if parsing failed
+        if race_info.get("race_number", 0) == 0 and len(race_id) == 12:
+            race_info["race_number"] = int(race_id[10:12])
+
         entries = self._parse_entries(soup)
 
         return ShutubaData(
@@ -83,13 +88,15 @@ class ShutubaScraper(BaseScraper):
         """
         race_info: dict = {}
 
-        # Race name from RaceName_main
+        # Race name from RaceName_main or RaceName
         race_name_elem = soup.find("h1", class_="RaceName_main")
+        if not race_name_elem:
+            race_name_elem = soup.find("h1", class_="RaceName")
         if race_name_elem:
             race_info["race_name"] = race_name_elem.get_text(strip=True)
 
         # Race number from RaceNum
-        race_num_elem = soup.find("div", class_="RaceNum")
+        race_num_elem = soup.find(["span", "div"], class_="RaceNum")
         if race_num_elem:
             race_num_text = race_num_elem.get_text(strip=True)
             match = re.search(r"(\d+)R", race_num_text, re.IGNORECASE)
