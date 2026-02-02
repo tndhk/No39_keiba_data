@@ -1,6 +1,6 @@
 # Backend Codemap
 
-> Freshness: 2026-01-30 (Line counts verified, horse_detail AJAX pedigree, venue_filter expansion)
+> Freshness: 2026-01-31 (Line counts verified, shutuba/markdown parser updates, race_list_sub/race_id_resolver added)
 
 ## Overview
 
@@ -11,9 +11,9 @@
 ### Package Structure
 
 ```
-keiba/cli/                       # 3581行合計
+keiba/cli/                       # 3588行合計
 +-- __init__.py                  # main, 後方互換性エクスポート (122行)
-+-- commands/                    # CLIコマンドモジュール (2225行)
++-- commands/                    # CLIコマンドモジュール (2220行)
 |   +-- __init__.py              # exports (5行)
 |   +-- scrape.py                # scrape, scrape-horses (421行)
 |   +-- analyze.py               # analyze (623行)
@@ -22,9 +22,9 @@ keiba/cli/                       # 3581行合計
 |   +-- review.py                # review-day (206行)
 |   +-- backtest.py              # backtest, backtest-fukusho/tansho/umaren/sanrenpuku/all (528行)
 |   +-- migrate.py               # migrate-grades (50行)
-+-- formatters/                  # 出力フォーマッタ (685行)
++-- formatters/                  # 出力フォーマッタ (692行)
 |   +-- __init__.py              # exports (13行)
-|   +-- markdown.py              # Markdown保存/パース/追記 (334行)
+|   +-- markdown.py              # Markdown保存/パース/追記 (341行)
 |   +-- simulation.py            # 馬券シミュレーション計算 (338行)
 +-- utils/                       # ユーティリティ (549行)
     +-- __init__.py              # empty (0行)
@@ -83,7 +83,7 @@ main.add_command(migrate_grades)  # from commands/migrate.py
 
 ### Formatters (keiba/cli/formatters/)
 
-#### markdown.py (325行)
+#### markdown.py (341行)
 
 | Function | Purpose |
 |----------|---------|
@@ -257,16 +257,18 @@ class SQLAlchemyRaceResultRepository:
 
 ## Scrapers (keiba/scrapers/)
 
-### Structure (1891行)
+### Structure (2069行)
 
 ```
 keiba/scrapers/
-+-- __init__.py          # 公開インポート (17行)
++-- __init__.py          # 公開インポート (21行)
 +-- base.py              # BaseScraper（グローバルレートリミッタ・指数バックオフ） (188行)
-+-- race_list.py         # RaceListScraper (106行)
++-- race_list.py         # RaceListScraper（過去データ専用） (106行)
++-- race_list_sub.py     # RaceListSubScraper（未来日付対応） (95行)
++-- race_id_resolver.py  # fetch_race_ids_for_date（フォールバック: 未来→過去） (76行)
 +-- race_detail.py       # RaceDetailScraper (853行)
 +-- horse_detail.py      # HorseDetailScraper（パース警告・AJAX血統取得対応） (367行)
-+-- shutuba.py           # ShutubaScraper (356行)
++-- shutuba.py           # ShutubaScraper (363行)
 ```
 
 ### BaseScraper (189行)
@@ -323,12 +325,30 @@ class HorseDetailScraper(BaseScraper):
 
 ```python
 class RaceListScraper:
-    """db.netkeiba.com/race/list/からレース一覧を取得"""
+    """db.netkeiba.com/race/list/からレース一覧を取得（過去データ専用）"""
 
     def fetch_race_urls(
         self, year: int, month: int, day: int, jra_only: bool = False
     ) -> list[str]:
         """指定日のレースURL一覧を取得"""
+```
+
+### RaceListSubScraper (95行)
+
+```python
+class RaceListSubScraper(BaseScraper):
+    """race.netkeiba.com/top/race_list_sub.htmlから未来日付のレースを取得"""
+
+    def fetch_race_ids(self, date: str) -> list[str]:
+        """指定日のrace_idリストを取得（未来日付対応）"""
+```
+
+### race_id_resolver (76行)
+
+```python
+def fetch_race_ids_for_date(date: str, jra_only: bool = False) -> list[str]:
+    """RaceListSubScraper -> RaceListScraper の自動フォールバックで
+    指定日のrace_idリストを取得"""
 ```
 
 ### RaceDetailScraper (853行)
@@ -379,14 +399,15 @@ class HorseDetailScraper:
         """馬の詳細情報（血統含む）を取得"""
 ```
 
-### ShutubaScraper (356行)
+### ShutubaScraper (363行)
 
 ```python
 class ShutubaScraper:
     """race.netkeiba.com/race/shutuba.htmlから出馬表を取得"""
 
     def fetch_shutuba(self, race_id: str) -> ShutubaData:
-        """出馬表データを取得（イミュータブル）"""
+        """出馬表データを取得（イミュータブル）
+        race_number取得失敗時はrace_idからフォールバック推測"""
 ```
 
 ## Database Layer (keiba/db.py) (75行)
@@ -617,10 +638,10 @@ FACTOR_WEIGHTS = {
 
 | Category | Total Lines | Files |
 |----------|-------------|-------|
-| CLI Package | 3581 | 20 |
+| CLI Package | 3588 | 20 |
 | Services | 956 | 5 |
 | Repositories | 133 | 2 |
-| Scrapers | 1891 | 6 |
+| Scrapers | 2069 | 8 |
 | ML | 409 | 5 |
 | Backtest | 2640 | 11 |
 | Analyzers | 597 | 9 |

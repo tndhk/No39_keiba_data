@@ -1,6 +1,6 @@
 # Architecture Codemap
 
-> Freshness: 2026-01-30 (Line counts verified, horse_detail AJAX pedigree, venue_filter expansion)
+> Freshness: 2026-01-31 (Line counts verified, shutuba/markdown parser updates, race_list_sub/race_id_resolver added)
 
 ## System Overview
 
@@ -19,7 +19,7 @@ keiba/                        # 競馬データ収集・分析CLI
 |   |   +-- migrate.py        # migrate-grades (50行)
 |   +-- formatters/           # 出力フォーマッタ
 |   |   +-- __init__.py       # exports (13行)
-|   |   +-- markdown.py       # Markdown保存/パース (334行)
+|   |   +-- markdown.py       # Markdown保存/パース (341行)
 |   |   +-- simulation.py     # 馬券シミュレーション (338行)
 |   +-- utils/                # CLIユーティリティ
 |       +-- __init__.py       # empty (0行)
@@ -41,10 +41,12 @@ keiba/                        # 競馬データ収集・分析CLI
 |   +-- jockey.py, trainer.py, owner.py, breeder.py (各31行)
 +-- scrapers/                 # Webスクレイパー
 |   +-- base.py               # BaseScraper（グローバルレートリミッタ・指数バックオフ） (188行)
-|   +-- race_list.py          # RaceListScraper (106行)
+|   +-- race_list.py          # RaceListScraper（過去データ専用） (106行)
+|   +-- race_list_sub.py      # RaceListSubScraper（未来日付対応） (95行)
+|   +-- race_id_resolver.py   # fetch_race_ids_for_date（フォールバック: 未来→過去） (76行)
 |   +-- race_detail.py        # RaceDetailScraper (853行)
 |   +-- horse_detail.py       # HorseDetailScraper（パース警告・AJAX血統取得対応） (367行)
-|   +-- shutuba.py            # ShutubaScraper (356行)
+|   +-- shutuba.py            # ShutubaScraper (363行)
 +-- services/                 # ビジネスロジックサービス
 |   +-- __init__.py           # exports (21行)
 |   +-- prediction_service.py # 予測サービス（7因子+ML） (410行)
@@ -103,6 +105,7 @@ cli/__init__.py (main)
 |   +-- ml/ (Predictor, find_latest_model)
 +-- commands/predict.py
 |   +-- scrapers/shutuba.py (ShutubaScraper)
+|   +-- scrapers/race_id_resolver.py (fetch_race_ids_for_date)
 |   +-- services/prediction_service.py (PredictionService)
 |   +-- repositories/race_result_repository.py
 |   +-- formatters/markdown.py
@@ -363,6 +366,8 @@ tests/
 +-- test_cli_backtest_fukusho.py     # 複勝バックテストCLIテスト（ルート）
 +-- cli/                             # CLIコマンドテスト
 |   +-- __init__.py
+|   +-- formatters/                  # フォーマッターテスト
+|   |   +-- test_markdown.py        # Markdownパーサーテスト
 |   +-- test_predict_day.py          # predict-dayコマンドテスト
 |   +-- test_review_day.py           # review-dayコマンドテスト
 |   +-- test_predict_review.py       # predict/review統合テスト

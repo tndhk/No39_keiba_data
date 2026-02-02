@@ -2,7 +2,7 @@
 
 競馬データ収集システムの開発ワークフローガイド。
 
-> Freshness: 2026-01-30 (Verified: Line counts, test files, scraper changes, simulator refactoring, horse_detail AJAX)
+> Freshness: 2026-01-31 (Verified: Line counts, shutuba/markdown parser updates, race_list_sub/race_id_resolver, new test dir cli/formatters)
 
 ## 環境セットアップ
 
@@ -45,7 +45,7 @@ keiba/
 |   |   +-- backtest.py   # backtest, backtest-fukusho/tansho/umaren/sanrenpuku/all (528行)
 |   |   +-- migrate.py    # migrate-grades (50行)
 |   +-- formatters/        # 出力フォーマッタ
-|   |   +-- markdown.py   # Markdown保存/パース (334行)
+|   |   +-- markdown.py   # Markdown保存/パース (341行)
 |   |   +-- simulation.py # 馬券シミュレーション計算 (338行)
 |   +-- utils/             # CLIユーティリティ
 |       +-- url_parser.py      # URL解析 (33行)
@@ -59,10 +59,12 @@ keiba/
 |   +-- entry.py           # 出馬表DTO（RaceEntry, ShutubaData）(66行)
 +-- scrapers/               # Webスクレイパー
 |   +-- base.py            # BaseScraper（グローバルレートリミッタ・指数バックオフ）(188行)
-|   +-- race_list.py       # レース一覧取得（RaceListScraper）(106行)
+|   +-- race_list.py       # レース一覧取得（RaceListScraper、過去データ専用）(106行)
+|   +-- race_list_sub.py   # レース一覧取得（RaceListSubScraper、未来日付対応）(95行)
+|   +-- race_id_resolver.py # レースID解決（フォールバック機能: 未来→過去）(76行)
 |   +-- race_detail.py     # レース詳細取得（RaceDetailScraper）(853行)
 |   +-- horse_detail.py    # 馬詳細取得（HorseDetailScraper・パース警告・AJAX血統取得対応）(367行)
-|   +-- shutuba.py         # 出馬表スクレイパー（ShutubaScraper）(356行)
+|   +-- shutuba.py         # 出馬表スクレイパー（ShutubaScraper）(363行)
 +-- services/               # ビジネスロジックサービス
 |   +-- prediction_service.py     # 予測サービス（PredictionService）(410行)
 |   +-- training_service.py       # 学習データ構築サービス (180行)
@@ -109,6 +111,7 @@ scripts/
 tests/
 +-- fixtures/               # テスト用HTMLフィクスチャ
 +-- cli/                    # CLIコマンドテスト
+|   +-- formatters/        # フォーマッターテスト
 |   +-- utils/             # CLIユーティリティテスト
 +-- services/               # サービス層テスト
 +-- models/                 # モデルテスト

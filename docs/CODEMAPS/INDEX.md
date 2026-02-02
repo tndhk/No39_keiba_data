@@ -1,6 +1,6 @@
 # Codemaps Index
 
-> Freshness: 2026-01-30 (Line counts verified, horse_detail AJAX pedigree, venue_filter expansion)
+> Freshness: 2026-01-31 (Line counts verified, shutuba/markdown parser updates, race_list_sub/race_id_resolver added)
 
 競馬データ収集システムのコードマップ一覧。
 
@@ -32,7 +32,7 @@ keiba/                           # 競馬データ収集・分析CLI
 |   |   +-- backtest.py          # backtest, backtest-fukusho/tansho/umaren/sanrenpuku/all (528行)
 |   |   +-- migrate.py           # migrate-grades (50行)
 |   +-- formatters/              # 出力フォーマッタ
-|   |   +-- markdown.py          # Markdown保存/パース (334行)
+|   |   +-- markdown.py          # Markdown保存/パース (341行)
 |   |   +-- simulation.py        # 馬券シミュレーション (338行)
 |   +-- utils/                   # CLIユーティリティ
 |       +-- url_parser.py        # URL解析 (33行)
@@ -55,10 +55,12 @@ keiba/                           # 競馬データ収集・分析CLI
 |   +-- race_result_repository.py # レース結果リポジトリ (128行)
 |
 +-- scrapers/                    # Webスクレイパー
-|   +-- race_list.py             # レース一覧取得 (106行)
+|   +-- race_list.py             # レース一覧取得（過去データ専用） (106行)
+|   +-- race_list_sub.py         # レース一覧取得（未来日付対応） (95行)
+|   +-- race_id_resolver.py      # レースID解決（フォールバック: 未来→過去） (76行)
 |   +-- race_detail.py           # レース詳細取得 (853行)
 |   +-- horse_detail.py          # 馬詳細取得（パース警告・AJAX血統取得対応） (367行)
-|   +-- shutuba.py               # 出馬表取得 (356行)
+|   +-- shutuba.py               # 出馬表取得 (363行)
 |   +-- base.py                  # 基底クラス（グローバルレートリミッタ・指数バックオフ） (188行)
 |
 +-- analyzers/                   # レース分析
