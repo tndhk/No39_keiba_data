@@ -22,7 +22,7 @@ htmlcov/
 *.swo
 
 # Project
-data/*.db
+#data/*.db
 data/models/
 *.log
 
